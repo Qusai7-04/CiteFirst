@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+/* ── Design Tokens ─────────────────────────────────────────────────────────── */
+@theme {
+  --color-primary: #14b8a6;
+  --color-primary-light: #2dd4bf;
+  --color-primary-dark: #0d9488;
+  --color-correct: #22c55e;
+  --color-ambiguous: #eab308;
+  --color-incorrect: #ef4444;
+  --color-partial: #f97316;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ── Light mode (default) ──────────────────────────────────────────────────── */
+:root {
+  --bg: #F8FAFC;
+  --bg-surface: #f1f5f9;
+  --card: #FFFFFF;
+  --card-border: #e2e8f0;
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --text-faint: #94a3b8;
+  --border: #e2e8f0;
+  --border-hover: #cbd5e1;
+  --input-bg: #f1f5f9;
+  --input-border: #cbd5e1;
+  --nav-bg: rgba(248,250,252,0.92);
+  --sidebar-bg: #FFFFFF;
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #cbd5e1;
+  --accent: #14b8a6;
+  --accent-bg: rgba(20,184,166,0.08);
+  --accent-border: rgba(20,184,166,0.18);
+  --glow-1: rgba(20,184,166,0.06);
+  --glow-2: rgba(139,92,246,0.05);
+  --user-accent: rgba(139,92,246,0.08);
+  --user-border: rgba(139,92,246,0.15);
+  --user-icon: #a78bfa;
+  color-scheme: light;
+}
+
+/* ── Dark mode ─────────────────────────────────────────────────────────────── */
+.dark {
+  --bg: #000000;
+  --bg-surface: #0a0a0a;
+  --card: #111111;
+  --card-border: #222222;
+  --card-shadow: 0 4px 20px rgba(0,0,0,0.8);
+  --text-primary: #FAFAFA;
+  --text-secondary: #D4D4D8;
+  --text-muted: #A1A1AA;
+  --text-faint: #52525B;
+  --border: #27272A;
+  --border-hover: #3F3F46;
+  --input-bg: #111111;
+  --input-border: #27272A;
+  --nav-bg: rgba(0,0,0,0.92);
+  --sidebar-bg: #0a0a0a;
+  --scrollbar-track: #000000;
+  --scrollbar-thumb: #222222;
+  --accent: #818cf8;
+  --accent-bg: rgba(129,140,248,0.12);
+  --accent-border: rgba(129,140,248,0.25);
+  --glow-1: rgba(129,140,248,0.07);
+  --glow-2: rgba(129,140,248,0.03);
+  --user-accent: #818cf8;
+  --user-border: rgba(129,140,248,0.3);
+  --user-icon: #ffffff;
+  color-scheme: dark;
+}
+
+/* ── Global styles ─────────────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in     { animation: fade-in 0.3s ease-out forwards; }
+.animate-fade-in-up  { animation: fade-in-up 0.5s ease-out forwards; }
+.animate-spin        { animation: spin 1s linear infinite; }
+.animate-pulse       { animation: pulse 2s ease-in-out infinite; }
+
+/* ── Reduced motion ────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Markdown Prose Formatting ─────────────────────────────────────────────── */
+.markdown-prose {
+  line-height: inherit;
+}
+.markdown-prose p {
+  margin-bottom: 0.75rem;
+}
+.markdown-prose p:last-child {
+  margin-bottom: 0;
+}
+.markdown-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.markdown-prose strong {
+  font-weight: 700;
+}
+.markdown-prose ul {
+  list-style-type: disc;
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.markdown-prose ol {
+  list-style-type: decimal;
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.markdown-prose code {
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.dark .markdown-prose code {
+  background: rgba(255, 255, 255, 0.1);
+}
+.markdown-prose pre {
+  background: var(--input-bg);
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+.markdown-prose pre code {
+  background: transparent;
+  padding: 0;
+}
+.markdown-prose blockquote {
+  border-left: 3px solid var(--accent);
+  margin-left: 0;
+  padding-left: 1rem;
+  color: var(--text-muted);
+}

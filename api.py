@@ -62,12 +62,13 @@ def _save_settings(data: dict):
 # ── Lazy-load CRAG modules ───────────────────────────────────────────────────
 try:
     from logic_engine import run_logic_engine, reload_config  # type: ignore
-    from evaluator import run_ml_evaluation  # type: ignore
     from database import process_and_save_pdf, delete_document, list_documents  # type: ignore
     CRAG_AVAILABLE = True
 except Exception as e:
     CRAG_AVAILABLE = False
     log.warning("CRAG modules unavailable; stub responses enabled: %s", e)
+
+from evaluator import run_ml_evaluation
 
 log.info("LLM provider: %s", selected_provider())
 
@@ -194,47 +195,8 @@ def start_evaluation():
     def run_eval():
         _eval_tasks[task_id]["status"] = "running"
         try:
-            if CRAG_AVAILABLE:
-                all_results = run_ml_evaluation()
-                if all_results:
-                    # New evaluator returns {grader_label: {tp, fp, fn, tn, precision, ...}}
-                    # Find the LLM grader key
-                    llm_key = next((k for k in all_results if "llm" in k.lower()), None)
-                    llm_data = all_results.get(llm_key, {}) if llm_key else {}
-
-                    _eval_tasks[task_id]["status"] = "completed"
-                    _eval_tasks[task_id]["result"] = {
-                        "precision": llm_data.get("precision", 0),
-                        "recall": llm_data.get("recall", 0),
-                        "f1": llm_data.get("f1", 0),
-                        "accuracy": llm_data.get("accuracy", 0),
-                        "llm": {
-                            "precision": llm_data.get("precision", 0),
-                            "recall": llm_data.get("recall", 0),
-                            "f1": llm_data.get("f1", 0),
-                            "accuracy": llm_data.get("accuracy", 0),
-                        },
-                        "llm_confusion": {
-                            "tp": llm_data.get("tp", 0),
-                            "fp": llm_data.get("fp", 0),
-                            "fn": llm_data.get("fn", 0),
-                            "tn": llm_data.get("tn", 0),
-                        },
-                    }
-                else:
-                    _eval_tasks[task_id]["status"] = "completed"
-                    _eval_tasks[task_id]["result"] = {
-                        "message": "Evaluation ran but returned no results.",
-                    }
-            else:
-                time.sleep(3)  # Simulate
-                # Stub metrics from metrics_chart_llm_llama3.18binstant.png
-                _eval_tasks[task_id]["status"] = "completed"
-                _eval_tasks[task_id]["result"] = {
-                    "precision": 0.65, "recall": 0.81, "f1": 0.72, "accuracy": 0.98,
-                    "llm": {"precision": 0.65, "recall": 0.81, "f1": 0.72, "accuracy": 0.98},
-                    "llm_confusion": {"tp": 13, "fp": 7, "fn": 3, "tn": 570},
-                }
+            _eval_tasks[task_id]["result"] = run_ml_evaluation()
+            _eval_tasks[task_id]["status"] = "completed"
         except Exception as e:
             _eval_tasks[task_id]["status"] = "failed"
             _eval_tasks[task_id]["result"] = {"error": str(e)}

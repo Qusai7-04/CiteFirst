@@ -42,6 +42,7 @@ yarn-error.log*
 
 # ── Generated artifacts (evaluation charts) ─────────────
 artifacts/*.png
+evaluation_results/
 
 # ── BM25 JSON cache ─────────────────────────────────────
 bm25_corpus.json
@@ -63,5 +64,6 @@ CLAUDE.md
 # ── Phase prompts and audit archives (not project code) ─
 PHASE*_CLAUDE_PROMPT*
 CLAUDE_*PROMPT*
+GEMINI_*PROMPT*
 *.zip
 _zip_review/

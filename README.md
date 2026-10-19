@@ -78,7 +78,7 @@ A full-stack RAG (Retrieval-Augmented Generation) application with a **4-phase c
 | `logic_engine.py` | The core 4-phase CRAG pipeline — reranking, tri-state grading, ambiguous resolution via LLM, pre-flight relevance check, and final answer generation. |
 | `providers.py` | Groq and Ollama generation requests. |
 | `settings_config.py` | Shared defaults and compatibility for stored settings. |
-| `evaluator.py` | Evaluation framework — runs the pipeline against `golden_dataset.json`, computes precision/recall/F1/accuracy using an LLM grader, and generates metric charts + confusion matrices. |
+| `evaluator.py` | Evidence-gated, LLM-free hybrid document retrieval audit and metrics; excludes unverified candidates. |
 | `generate_dataset.py` | Golden dataset generator — creates Q&A pairs from the ingested papers for evaluation. |
 | `upload_papers.py` | Batch PDF ingestion script — processes all PDFs in the `papers/` directory into ChromaDB. |
 | `test_search.py` | Quick search test — verifies that the vector store retrieval is working. |
@@ -94,7 +94,7 @@ A full-stack RAG (Retrieval-Augmented Generation) application with a **4-phase c
 | `/` | Home | Landing page with pipeline overview, metrics preview, and quick-query bar |
 | `/chat` | Chat | Interactive Q&A interface with PDF upload, file-scoped filtering, streaming responses, chunk visualization, and PDF export |
 | `/pipeline` | Pipeline | Real-time pipeline visualizer showing each phase as chunks flow through |
-| `/analytics` | Analytics | Evaluation dashboard with precision/recall/F1 gauges, confusion matrices, and pipeline configuration summary |
+| `/analytics` | Analytics | Evidence-gated hybrid document retrieval audit, coverage counts, and ranked metrics when verified labels exist |
 | `/vault` | Vault | Document management — view/delete/search ingested PDFs, see chunk counts |
 | `/settings` | Settings | Hot-reload pipeline thresholds (CORRECT, AMBIGUOUS, BENDY, distance, etc.) |
 
@@ -242,17 +242,19 @@ and [license notes](https://github.com/pymupdf/pymupdf4llm/blob/main/CHANGES.md)
 
 ## Optional: Run Evaluation
 
-To evaluate the pipeline against the golden dataset:
+To audit the candidate dataset without a model or API key:
 
 ```bash
-python evaluator.py
+python evaluator.py --audit-only
 ```
 
-This will:
-1. Run every question in `golden_dataset.json` through the pipeline
-2. Grade answers using an LLM grader
-3. Generate metric charts (`metrics_chart_*.png`) and confusion matrices (`confusion_matrix_*.png`)
-4. Print precision, recall, F1, and accuracy scores
+Once human-verified paper/page evidence has been added to a reviewed copy:
+
+```bash
+python evaluator.py --dataset reviewed_dataset.json --index-tag "my-fixed-index"
+```
+
+This scores every eligible answerable question using hybrid retrieval before CRAG and writes ignored `evaluation_results/` reports. Paper ranks are deduplicated within the first ten retrieved chunks, which may contain fewer than ten unique papers. The checked-in 18 DeepSeek candidates have no verified evidence, so the current baseline is blocked. A scored run requires a fixed index tag, local index and embedding model, but no Groq/Ollama credentials; answer and citation quality need separate review. The home and analytics pages do not advertise the old unverified accuracy/F1 values. See [Phase 3 audit](docs/evaluation/phase3-audit.md), [methodology](docs/evaluation/methodology.md), and [annotation worksheet](docs/evaluation/annotation-template.md).
 
 ---
 

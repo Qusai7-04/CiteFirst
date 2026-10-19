@@ -27,21 +27,10 @@ export interface Evidence {
 }
 
 export interface EvaluationResponse {
-  precision: number;
-  recall: number;
-  f1: number;
-  accuracy: number;
-  llm: { precision: number; recall: number; f1: number; accuracy: number };
-  llm_confusion: { tp: number; fp: number; fn: number; tn: number };
-  queries?: QueryResult[];
-}
-
-export interface QueryResult {
-  id: number;
-  question: string;
-  status: string;
-  chunks: string;
-  grade: string;
+  baseline_status: string;
+  dataset_sha256: string;
+  counts: Record<string, number>;
+  metrics: Record<string, { mean: number; count: number }>;
 }
 
 export interface VaultDocument {

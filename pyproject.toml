@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+markers = [
+    "needs_symlinks: test requires symlink creation privileges (skipped on unprivileged Windows)",
+]

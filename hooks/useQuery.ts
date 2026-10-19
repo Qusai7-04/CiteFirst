@@ -6,13 +6,13 @@ import type { QueryResponse } from "@/types/api";
 export interface PipelineProgress {
   step: string;
   detail: string;
-  progress: number;
+  progress?: number;
 }
 
 export function useQuery() {
   const [pipelineSteps, setPipelineSteps] = useState<PipelineProgress[]>([]);
   const [currentStep, setCurrentStep] = useState<string>("");
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState<number | null>(null);
   const abortRef = useRef(false);
 
   /** Non-streaming fallback */
@@ -29,7 +29,7 @@ export function useQuery() {
     ): Promise<QueryResponseRaw> => {
       setPipelineSteps([]);
       setCurrentStep("");
-      setProgress(0);
+      setProgress(null);
       abortRef.current = false;
 
       const result = await streamQuery(question, (event: SSEEvent) => {
@@ -39,11 +39,11 @@ export function useQuery() {
           const step: PipelineProgress = {
             step: event.step,
             detail: event.detail || "",
-            progress: event.progress || 0,
+            progress: event.progress,
           };
           setPipelineSteps((prev) => [...prev, step]);
           setCurrentStep(event.step);
-          setProgress(event.progress || 0);
+          setProgress(event.progress ?? null);
           onStep?.(step);
         } else {
           setProgress(100);
@@ -59,7 +59,7 @@ export function useQuery() {
   const reset = useCallback(() => {
     setPipelineSteps([]);
     setCurrentStep("");
-    setProgress(0);
+    setProgress(null);
   }, []);
 
   return { sendQuery, sendQueryStream, pipelineSteps, currentStep, progress, reset };

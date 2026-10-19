@@ -5,10 +5,10 @@ export const GRADE_COLORS = {
 };
 
 export const STATUS_COLORS = {
-  success: { bg: "bg-green-500/20", text: "text-green-400", label: "✅ Success" },
-  fallback_success: { bg: "bg-yellow-500/20", text: "text-yellow-400", label: "🔄 Fallback Success" },
-  partial_match: { bg: "bg-orange-500/20", text: "text-orange-400", label: "⚠️ Partial Match" },
-  failed: { bg: "bg-red-500/20", text: "text-red-400", label: "❌ Failed" },
+  success: { bg: "bg-green-500/20", text: "text-green-400", label: "Evidence found" },
+  fallback_success: { bg: "bg-yellow-500/20", text: "text-yellow-400", label: "Evidence found after retry" },
+  partial_match: { bg: "bg-orange-500/20", text: "text-orange-400", label: "Partial evidence — verify" },
+  failed: { bg: "bg-red-500/20", text: "text-red-400", label: "No reliable evidence" },
 };
 
 export const DEFAULT_SETTINGS = {

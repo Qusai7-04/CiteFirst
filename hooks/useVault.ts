@@ -20,7 +20,11 @@ export function useVault() {
     }
   }, []);
 
-  useEffect(() => { fetchDocuments(); }, [fetchDocuments]);
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) void fetchDocuments(); });
+    return () => { cancelled = true; };
+  }, [fetchDocuments]);
 
   const uploadDocument = async (file: File) => {
     await api.upload("/api/vault/upload", file);

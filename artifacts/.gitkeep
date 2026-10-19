@@ -1,0 +1,2 @@
+# Evaluation artifacts (generated charts) are placed here at runtime.
+# This directory is served via /static/ by the FastAPI backend.

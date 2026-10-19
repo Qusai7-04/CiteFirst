@@ -28,55 +28,41 @@ export default function ChatInterface() {
     deleteSession
   } = useChatHistory();
 
-  useEffect(() => {
-    if (isNewChat) {
-      setActiveSessionId(null);
-      setActiveDocument(null);
-      setMessages([]);
-      router.replace("/chat");
-    }
-  }, [isNewChat, router, setActiveSessionId]);
-
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeDocument, setActiveDocument] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sidebarOpen = true;
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const hasRun = useRef(false);
   const { sendQueryStream, currentStep } = useQuery();
 
+  useEffect(() => {
+    if (!isNewChat) return;
+    queueMicrotask(() => {
+      setActiveSessionId(null);
+      setActiveDocument(null);
+      setMessages([]);
+      router.replace("/chat");
+    });
+  }, [isNewChat, router, setActiveSessionId]);
+
   // Load session data when switching sessions
   useEffect(() => {
-    if (activeSessionId) {
-      const session = sessions.find(s => s.id === activeSessionId);
-      if (session) {
-        setMessages(session.messages);
-        setActiveDocument(session.documentFilter || null);
-      }
-    } else {
-      setMessages([]);
-      setActiveDocument(null);
-    }
+    if (isNewChat) return;
+    let cancelled = false;
+    const session = sessions.find(s => s.id === activeSessionId);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setMessages(session?.messages || []);
+      setActiveDocument(session?.documentFilter || null);
+    });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSessionId]); 
-
-  // Handle initial query from home page
-  useEffect(() => {
-    if (initialQuery && !hasRun.current) {
-      hasRun.current = true;
-      const sessionId = createSession();
-      setActiveSessionId(sessionId);
-      // Wait for state to settle then submit
-      setTimeout(() => {
-        handleSubmit(initialQuery, sessionId);
-      }, 100);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialQuery]);
+  }, [activeSessionId, isNewChat]);
 
   // Save messages to history when they change
   useEffect(() => {
@@ -164,9 +150,11 @@ export default function ChatInterface() {
         content: raw.answer,
         timestamp: new Date(),
         sources: (raw.facts || []).map((fact, i) => ({
-          filename: raw.sources?.[i] || raw.sources?.[0] || "chunk",
+          filename: raw.evidence?.[i]?.source || raw.sources?.[i] || raw.sources?.[0] || "Unknown source",
           score: 0,
-          grade: "correct" as const,
+          evidenceStatus: raw.status === "partial_match" ? "partial" as const : "evidence" as const,
+          pageNumber: raw.evidence?.[i]?.page_number ?? null,
+          evidenceId: raw.evidence?.[i]?.id ?? null,
           text: typeof fact === "string" ? fact : String(fact),
         })),
         pipeline: {
@@ -190,6 +178,20 @@ export default function ChatInterface() {
       setLoading(false);
     }
   };
+
+  // Handle initial query from home page
+  useEffect(() => {
+    if (initialQuery && !hasRun.current) {
+      hasRun.current = true;
+      const sessionId = createSession();
+      setActiveSessionId(sessionId);
+      // Wait for state to settle then submit
+      setTimeout(() => {
+        handleSubmit(initialQuery, sessionId);
+      }, 100);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
 
   const handleEdit = (id: string, newContent: string) => {
     // Truncate history at the edited message, replace it, then submit

@@ -37,14 +37,17 @@ export function useChatHistory() {
   // Load from localStorage only after mount (client-only)
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = parseSessions(stored);
-      setSessions(parsed);
-      if (parsed.length > 0) {
-        setActiveSessionId(parsed[0].id);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (stored) {
+        const parsed = parseSessions(stored);
+        setSessions(parsed);
+        if (parsed.length > 0) setActiveSessionId(parsed[0].id);
       }
-    }
-    setHydrated(true);
+      setHydrated(true);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // Persist to localStorage whenever sessions change (after hydration)

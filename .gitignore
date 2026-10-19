@@ -38,7 +38,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-package-lock.json
+
+# ── Generated artifacts (evaluation charts) ─────────────
+artifacts/*.png
+
+# ── BM25 JSON cache ─────────────────────────────────────
+bm25_corpus.json
 
 # ── IDE / OS ────────────────────────────────────────────
 .DS_Store
@@ -53,5 +58,8 @@ CLAUDE.md
 .cursorrules
 .windsurfrules
 
-# ── Phase prompts (meta-documents, not project code) ───
+# ── Phase prompts and audit archives (not project code) ─
 PHASE*_CLAUDE_PROMPT*
+CLAUDE_*PROMPT*
+*.zip
+_zip_review/

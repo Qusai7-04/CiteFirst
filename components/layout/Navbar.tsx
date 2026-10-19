@@ -16,10 +16,7 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false);
   const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "disconnected">("checking");
-
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     checkHealth().then((h) => {

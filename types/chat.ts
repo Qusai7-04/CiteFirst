@@ -1,7 +1,10 @@
 export interface Source {
   filename: string;
   score: number;
-  grade: "correct" | "ambiguous" | "incorrect";
+  grade?: "correct" | "ambiguous" | "incorrect";
+  evidenceStatus?: "evidence" | "partial";
+  pageNumber?: number | null;
+  evidenceId?: string | null;
   text: string;
 }
 

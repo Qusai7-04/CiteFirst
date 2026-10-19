@@ -11,9 +11,19 @@ export interface Chunk {
 export interface QueryResponse {
   status: PipelineStatus;
   answer: string;
-  facts: Chunk[];
+  facts: string[];
   sources: string[];
+  evidence?: Evidence[];
   query_used: string;
+}
+
+export interface Evidence {
+  id: string | null;
+  document_id: string | null;
+  source: string;
+  page_index: number | null;
+  page_number: number | null;
+  text: string;
 }
 
 export interface EvaluationResponse {

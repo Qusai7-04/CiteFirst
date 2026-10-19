@@ -74,6 +74,10 @@ def compute_metrics(tp, fp, fn, tn):
 
 # ── Plots ──────────────────────────────────────────────────────────────────────
 
+ARTIFACTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "artifacts")
+os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+
+
 def plot_for_grader(grader_name, tp, fp, fn, tn,
                     precision, recall, f1, accuracy):
     safe = (grader_name
@@ -93,7 +97,7 @@ def plot_for_grader(grader_name, tp, fp, fn, tn,
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.tight_layout()
-    fname_cm = f"confusion_matrix_{safe}.png"
+    fname_cm = os.path.join(ARTIFACTS_DIR, f"confusion_matrix_{safe}.png")
     plt.savefig(fname_cm, dpi=300)
     plt.close()
     print(f"  └─ Saved {fname_cm}")
@@ -109,7 +113,7 @@ def plot_for_grader(grader_name, tp, fp, fn, tn,
     for i, v in enumerate(scores):
         ax.text(i, v + 0.02, f"{v:.2f}", ha='center', fontweight='bold')
     plt.tight_layout()
-    fname_mc = f"metrics_chart_{safe}.png"
+    fname_mc = os.path.join(ARTIFACTS_DIR, f"metrics_chart_{safe}.png")
     plt.savefig(fname_mc, dpi=300)
     plt.close()
     print(f"  └─ Saved {fname_mc}")

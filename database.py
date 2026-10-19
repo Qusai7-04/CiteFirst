@@ -2,9 +2,17 @@ import fitz
 import chromadb
 import os
 import re
-import pickle
+import json
+import logging
+import tempfile
+import hashlib
+from pathlib import Path
+from threading import Lock
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from settings_config import load_settings
+
+log = logging.getLogger(__name__)
 
 # ── Optional BM25 ──────────────────────────────────────────────────────────────
 try:
@@ -12,11 +20,11 @@ try:
     BM25_AVAILABLE = True
 except ImportError:
     BM25_AVAILABLE = False
-    print("[WARN] rank_bm25 not installed → pip install rank-bm25")
-    print("       Falling back to dense-only search.")
+    log.warning("rank_bm25 is unavailable; falling back to dense-only search")
 
 # ── Setup ChromaDB ─────────────────────────────────────────────────────────────
-chroma_client = chromadb.PersistentClient(path="./vector_vault")
+VECTOR_DIR = Path(os.getenv("CITEFIRST_VECTOR_DIR", "./vector_vault"))
+chroma_client = chromadb.PersistentClient(path=str(VECTOR_DIR))
 
 # Child collection  — small 100-word chunks, embedded for precise matching
 collection = chroma_client.get_or_create_collection(name="ieee_papers")
@@ -24,14 +32,21 @@ collection = chroma_client.get_or_create_collection(name="ieee_papers")
 # Parent collection — large 350-word chunks, fetched by ID for rich LLM context
 parent_collection = chroma_client.get_or_create_collection(name="ieee_papers_parent")
 
-print("Loading BGE-Small Embedding Model (High-Accuracy)...")
-model = SentenceTransformer('BAAI/bge-small-en-v1.5')
+_embedding_model = None
+_embedding_lock = Lock()
+
+
+def _get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        with _embedding_lock:
+            if _embedding_model is None:
+                _embedding_model = SentenceTransformer('BAAI/bge-small-en-v1.5')
+    return _embedding_model
 
 # ── BM25 cache path ────────────────────────────────────────────────────────────
-BM25_CACHE_PATH = "./vector_vault/bm25_corpus.pkl"
-
-# ── Distance threshold ─────────────────────────────────────────────────────────
-DISTANCE_THRESHOLD = 0.70
+BM25_CACHE_PATH = VECTOR_DIR / "bm25_corpus.json"
+BM25_CACHE_VERSION = 1
 
 # ── Domain taxonomy ────────────────────────────────────────────────────────────
 DOMAIN_KEYWORDS = {
@@ -76,30 +91,14 @@ def check_vault_schema():
     If 'parent_id' is absent from all chunks, the vault is legacy (350-word
     single chunks with no parent linkage).
 
-    The logic_engine handles both schemas gracefully, but for best results
-    the vault should be re-ingested with the current database.py:
-        rm -rf ./vector_vault
-        python database.py
+    The logic engine handles both schemas. For page provenance, build a
+    separate index with CITEFIRST_VECTOR_DIR; keep the old vault for rollback.
     """
     try:
         sample = collection.get(limit=5, include=["metadatas"])
         metas  = sample.get("metadatas", [])
         if metas and not any(m.get("parent_id") for m in metas):
-            print()
-            print("━" * 60)
-            print("  ⚠️  LEGACY VAULT DETECTED")
-            print("  Chunks have no 'parent_id' — vault was ingested with")
-            print("  an older version of database.py.")
-            print()
-            print("  For best performance, re-ingest:")
-            print("    rm -rf ./vector_vault")
-            print("    python database.py")
-            print()
-            print("  The pipeline will run in LEGACY MODE with adjusted")
-            print("  thresholds. Expect lower precision / recall than")
-            print("  a freshly ingested vault.")
-            print("━" * 60)
-            print()
+            log.warning("Legacy vault schema detected (chunks lack parent_id); preserve the vault before any re-indexing")
             return "legacy"
         return "new"
     except Exception:
@@ -119,23 +118,47 @@ def _build_bm25_index():
 
 
 def _load_or_build_bm25():
-    if os.path.exists(BM25_CACHE_PATH):
+    if BM25_CACHE_PATH.exists() and not BM25_CACHE_PATH.is_symlink():
         try:
-            with open(BM25_CACHE_PATH, "rb") as f:
-                return pickle.load(f)
-        except Exception:
-            pass
+            with BM25_CACHE_PATH.open("r", encoding="utf-8") as f:
+                cached = json.load(f)
+            docs = cached["documents"]
+            metas = cached["metadatas"]
+            tokens = cached["tokens"]
+            if (cached["version"] != BM25_CACHE_VERSION or not isinstance(docs, list)
+                    or not docs or not isinstance(metas, list) or not isinstance(tokens, list)
+                    or len(docs) != len(metas) or len(docs) != len(tokens)
+                    or any(not isinstance(doc, str) for doc in docs)
+                    or any(not isinstance(meta, dict) or not all(isinstance(k, str) for k in meta)
+                           for meta in metas)
+                    or any(not isinstance(row, list) or not all(isinstance(t, str) for t in row)
+                           for row in tokens)
+                    or any(row != doc.lower().split() for row, doc in zip(tokens, docs))):
+                raise ValueError("Invalid BM25 cache schema")
+            return BM25Okapi(tokens), docs, metas
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            pass  # Rebuild from the vector collection; never read the legacy pickle.
     bm25, corpus, metadatas = _build_bm25_index()
     if bm25 is not None:
-        with open(BM25_CACHE_PATH, "wb") as f:
-            pickle.dump((bm25, corpus, metadatas), f)
+        BM25_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=BM25_CACHE_PATH.parent,
+                                         delete=False) as f:
+            temporary_path = Path(f.name)
+            try:
+                json.dump({"version": BM25_CACHE_VERSION, "documents": corpus,
+                           "metadatas": metadatas,
+                           "tokens": [doc.lower().split() for doc in corpus]}, f)
+            except Exception:
+                temporary_path.unlink(missing_ok=True)
+                raise
+        temporary_path.replace(BM25_CACHE_PATH)
     return bm25, corpus, metadatas
 
 
 def invalidate_bm25_cache():
-    if os.path.exists(BM25_CACHE_PATH):
-        os.remove(BM25_CACHE_PATH)
-        print("[BM25] Cache invalidated. Will rebuild on next search.")
+    if BM25_CACHE_PATH.exists():
+        BM25_CACHE_PATH.unlink()
+        log.info("[BM25] Cache invalidated. Will rebuild on next search.")
 
 
 def _reciprocal_rank_fusion(ranked_lists: list, k: int = 60) -> list:
@@ -212,6 +235,8 @@ def _expand_to_parent(child_doc: str, child_meta: dict) -> tuple:
             parent_doc  = result["documents"][0]
             parent_meta = dict(result["metadatas"][0])
             parent_meta["child_text"] = child_doc   # ← key: score with this, not parent
+            parent_meta.update({key: child_meta[key] for key in
+                                ("source", "document_id", "page_index", "chunk_id") if key in child_meta})
             return parent_doc, parent_meta
     except Exception:
         pass
@@ -221,30 +246,69 @@ def _expand_to_parent(child_doc: str, child_meta: dict) -> tuple:
 
 # ── Ingestion ──────────────────────────────────────────────────────────────────
 
+def _page_text(page) -> str:
+    """Extract a page with a readable Markdown copy of detected tables."""
+    text = page.get_text(sort=True)
+    if hasattr(page, "find_tables"):
+        for table in page.find_tables().tables:
+            rows = table.extract()
+            if not rows:
+                continue
+            formatted = [[str(cell or "").replace("|", "\\|") for cell in row] for row in rows]
+            header = "| " + " | ".join(formatted[0]) + " |"
+            divider = "| " + " | ".join("---" for _ in formatted[0]) + " |"
+            body = ["| " + " | ".join(row) + " |" for row in formatted[1:]]
+            text += "\n\n" + "\n".join([header, divider, *body])
+    return text
+
+
+def _page_chunks(pages: list[str]) -> tuple[list, list]:
+    """Keep parent and child chunks within one PDF page for honest provenance."""
+    child, parent = [], []
+    for page_index, text in enumerate(pages):
+        if not text.strip():
+            continue
+        parents = split_into_semantic_chunks(text)
+        children = split_into_sentence_chunks(text)
+        if not parents:
+            continue
+        first_parent = len(parent)
+        parent.extend((chunk, page_index) for chunk in parents)
+        ratio = max(1, len(children) // len(parents))
+        child.extend((chunk, page_index, first_parent + min(i // ratio, len(parents) - 1))
+                     for i, chunk in enumerate(children))
+    return child, parent
+
 def process_and_save_pdf(pdf_path):
     file_name = os.path.basename(pdf_path)
 
     existing = collection.get(where={"source": file_name})
     if len(existing['ids']) > 0:
-        print(f" Skipping {file_name}: Already in the vault.")
+        log.info(f" Skipping {file_name}: Already in the vault.")
         return
 
-    doc       = fitz.open(pdf_path)
-    full_text = ""
-    for page in doc:
-        full_text += page.get_text(sort=True) + "\n"
+    with fitz.open(pdf_path) as doc:
+        pages = [_page_text(page) for page in doc]
+    full_text = "\n".join(pages)
+    document_id = hashlib.sha256(file_name.encode("utf-8")).hexdigest()[:16]
 
     domain = detect_domain(full_text)
-    print(f" Detected domain for {file_name}: [{domain}]")
+    log.info(f" Detected domain for {file_name}: [{domain}]")
 
-    child_chunks  = split_into_sentence_chunks(full_text)
-    parent_chunks = split_into_semantic_chunks(full_text)
+    child_entries, parent_entries = _page_chunks(pages)
+    child_chunks = [entry[0] for entry in child_entries]
+    parent_chunks = [entry[0] for entry in parent_entries]
+    if not parent_chunks or not child_chunks:
+        raise ValueError(f"No extractable text in {file_name}")
 
     # Store parent chunks (no embedding — fetched by ID only)
     dummy_dim        = 384
     dummy_vecs       = [[0.0] * dummy_dim for _ in parent_chunks]
-    parent_ids       = [f"{file_name}_parent_{i}" for i in range(len(parent_chunks))]
-    parent_metadatas = [{"source": file_name, "domain": domain} for _ in parent_chunks]
+    parent_ids       = [f"{document_id}_p{page}_parent_{i}"
+                        for i, (_, page) in enumerate(parent_entries)]
+    parent_metadatas = [{"source": file_name, "document_id": document_id,
+                         "page_index": page, "chunk_id": parent_ids[i], "domain": domain}
+                        for i, (_, page) in enumerate(parent_entries)]
 
     parent_collection.add(
         embeddings=dummy_vecs,
@@ -254,25 +318,26 @@ def process_and_save_pdf(pdf_path):
     )
 
     # Store child chunks (embedded for retrieval)
-    ratio           = max(1, len(child_chunks) // max(1, len(parent_chunks)))
     child_ids       = []
     child_metadatas = []
 
-    for i in range(len(child_chunks)):
-        parent_idx = min(i // ratio, len(parent_chunks) - 1)
-        child_ids.append(f"{file_name}_child_{i}")
+    for i, (_, page_index, parent_idx) in enumerate(child_entries):
+        child_ids.append(f"{document_id}_p{page_index}_child_{i}")
         child_metadatas.append({
             "source":    file_name,
             "domain":    domain,
-            "parent_id": f"{file_name}_parent_{parent_idx}",
+            "document_id": document_id,
+            "page_index": page_index,
+            "chunk_id": child_ids[-1],
+            "parent_id": parent_ids[parent_idx],
         })
 
-    print(f"Translating {len(child_chunks)} child chunks from {file_name}...")
+    log.info(f"Translating {len(child_chunks)} child chunks from {file_name}...")
     prefixed = [
         f"Represent this sentence for searching relevant passages: {c}"
         for c in child_chunks
     ]
-    vectors = model.encode(prefixed, show_progress_bar=False).tolist()
+    vectors = _get_embedding_model().encode(prefixed, show_progress_bar=False).tolist()
 
     collection.add(
         embeddings=vectors,
@@ -280,30 +345,26 @@ def process_and_save_pdf(pdf_path):
         metadatas=child_metadatas,
         ids=child_ids,
     )
-    print(f" Saved {file_name} ({len(child_chunks)} child + {len(parent_chunks)} parent chunks)")
+    log.info(f" Saved {file_name} ({len(child_chunks)} child + {len(parent_chunks)} parent chunks)")
     invalidate_bm25_cache()
 
 
 # ── Retrieval ──────────────────────────────────────────────────────────────────
 
-# Set by api.py before calling run_logic_engine to restrict retrieval to one file.
-# Reset to None after the call. Core pipeline logic is unaware of this.
-_ACTIVE_FILE_FILTER: str | None = None
-
-
-def search_vault(query, n_results=10, domain_filter=None):
+def search_vault(query, n_results=10, domain_filter=None, file_filter=None):
     """
     Hybrid Search (Dense + BM25) + RRF + Parent expansion.
     Returns parent chunks in documents[], child_text in metadatas[] for scoring.
-    Respects _ACTIVE_FILE_FILTER (set by api.py) to restrict to a single source.
+    Restricts retrieval to file_filter when supplied by a request.
     """
     fetch_n = n_results * 3
+    distance_threshold = load_settings()["DISTANCE_THRESHOLD"]
 
     search_query = f"Represent this sentence for searching relevant passages: {query}"
-    query_vector = model.encode([search_query]).tolist()
+    query_vector = _get_embedding_model().encode([search_query]).tolist()
 
     # Build ChromaDB where clause — respect both domain filter and active file filter
-    active_src = _ACTIVE_FILE_FILTER
+    active_src = file_filter
     if active_src and domain_filter:
         where_filter = {"$and": [{"source": active_src}, {"domain": domain_filter}]}
     elif active_src:
@@ -324,11 +385,16 @@ def search_vault(query, n_results=10, domain_filter=None):
     raw_metas     = results["metadatas"][0]
     raw_distances = results["distances"][0]
 
-    doc_info: dict = {}
-    for doc, meta, dist in zip(raw_docs, raw_metas, raw_distances):
-        doc_info[doc] = (meta, dist)
+    # Content can repeat across pages. Keep each chunk's identity with its text.
+    def key_for(doc, meta):
+        return (doc, meta.get("source"), meta.get("page_index"), meta.get("chunk_id"))
 
-    dense_ranking = list(raw_docs)
+    doc_info: dict = {}
+    dense_ranking = []
+    for doc, meta, dist in zip(raw_docs, raw_metas, raw_distances):
+        key = key_for(doc, meta)
+        dense_ranking.append(key)
+        doc_info[key] = (meta, dist)
 
     # BM25 sparse retrieval
     bm25_ranking = []
@@ -348,34 +414,36 @@ def search_vault(query, n_results=10, domain_filter=None):
                         continue
                     if active_src and meta.get("source") != active_src:
                         continue
-                    bm25_ranking.append(doc)
-                    if doc not in doc_info:
-                        doc_info[doc] = (meta, DISTANCE_THRESHOLD)
+                    key = key_for(doc, meta)
+                    bm25_ranking.append(key)
+                    if key not in doc_info:
+                        doc_info[key] = (meta, distance_threshold)
         except Exception as e:
-            print(f"  [BM25] Error: {e}")
+            log.warning("BM25 search failed: %s", e)
 
     all_rankings = [r for r in [dense_ranking, bm25_ranking] if r]
     if len(all_rankings) > 1:
         merged_ranking = _reciprocal_rank_fusion(all_rankings)
-        print(f"  [Hybrid] Dense={len(dense_ranking)} | BM25={len(bm25_ranking)} → merged={len(merged_ranking)}")
+        log.info(f"  [Hybrid] Dense={len(dense_ranking)} | BM25={len(bm25_ranking)} → merged={len(merged_ranking)}")
     else:
         merged_ranking = dense_ranking
-        print(f"  [Dense-only] Retrieved {len(dense_ranking)} chunks")
+        log.info(f"  [Dense-only] Retrieved {len(dense_ranking)} chunks")
 
     filtered_docs  = []
     filtered_metas = []
 
-    for doc in merged_ranking[:fetch_n]:
-        meta, dist = doc_info.get(doc, ({}, DISTANCE_THRESHOLD))
-        if dist <= DISTANCE_THRESHOLD:
+    for doc_key in merged_ranking[:fetch_n]:
+        doc = doc_key[0]
+        meta, dist = doc_info.get(doc_key, ({}, distance_threshold))
+        if dist <= distance_threshold:
             expanded_doc, expanded_meta = _expand_to_parent(doc, meta)
             filtered_docs.append(expanded_doc)
             filtered_metas.append(expanded_meta)
         else:
             src = meta.get("source", "Unknown")
-            print(f"  [pre-filter] Dropped '{src}' — distance={dist:.3f} > {DISTANCE_THRESHOLD}")
+            log.info(f"  [pre-filter] Dropped '{src}' — distance={dist:.3f} > {distance_threshold}")
 
-    print(f"  [DB] {len(merged_ranking)} merged → {len(filtered_docs)} passed pre-filter")
+    log.info(f"  [DB] {len(merged_ranking)} merged → {len(filtered_docs)} passed pre-filter")
 
     results["documents"][0] = filtered_docs
     results["metadatas"][0] = filtered_metas
@@ -423,7 +491,7 @@ def delete_document(filename: str) -> int:
 
         invalidate_bm25_cache()
     except Exception as e:
-        print(f"[delete_document] Error: {e}")
+        log.warning("Document index deletion failed: %s", e)
     return deleted
 
 

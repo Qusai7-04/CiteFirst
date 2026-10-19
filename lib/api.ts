@@ -1,3 +1,5 @@
+import type { Evidence } from "@/types/api";
+
 const BASE_URL = "http://localhost:8000";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -42,6 +44,7 @@ export interface QueryResponseRaw {
   answer: string;
   facts: string[];
   sources: string[];
+  evidence?: Evidence[];
   query_used: string;
 }
 
@@ -50,7 +53,7 @@ export async function streamQuery(
   onEvent: (event: SSEEvent) => void,
   file_filter?: string,
 ): Promise<QueryResponseRaw> {
-  const body: any = { question };
+  const body: { question: string; file_filter?: string } = { question };
   if (file_filter) body.file_filter = file_filter;
 
   const res = await fetch(`${BASE_URL}/api/query/stream`, {

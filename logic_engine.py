@@ -44,16 +44,16 @@ PROJECTED OUTCOME: P≈0.78, R≈0.64, F1≈0.70
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-import os
 import sys
-import time
 import math
 import logging
+from threading import Lock
 import numpy as np
 from dotenv import load_dotenv
-from groq import Groq
 from sentence_transformers import CrossEncoder
 from database import search_vault, DOMAIN_KEYWORDS, check_vault_schema
+from settings_config import load_settings
+import providers
 
 # ── Setup ──────────────────────────────────────────────────────────────────────
 load_dotenv()
@@ -67,28 +67,24 @@ log = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-_api_key = os.getenv("GROQ_API_KEY")
-if not _api_key:
-    raise EnvironmentError(
-        "GROQ_API_KEY not found. Add it to your .env file:\n"
-        "GROQ_API_KEY=gsk_your_key_here"
-    )
-
-client = Groq(api_key=_api_key)
-
 # ── Model config ───────────────────────────────────────────────────────────────
 LIGHT_TEXT_MODEL = "llama-3.3-70b-versatile"
 ANSWER_MODEL     = "llama-3.3-70b-versatile"
-FETCH_K          = 30
-PROCESS_K        = 10
-CHUNK_WORD_LIMIT = 300
-
 # ── Vault schema ───────────────────────────────────────────────────────────────
 VAULT_SCHEMA = check_vault_schema()   # "new" | "legacy" | "unknown"
 
 # ── Cross-Encoder ──────────────────────────────────────────────────────────────
-print("🧠 Loading BGE Reranker — Academic-Grade Cross-Encoder...")
-grader_model = CrossEncoder('BAAI/bge-reranker-base')
+_reranker = None
+_reranker_lock = Lock()
+
+
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        with _reranker_lock:
+            if _reranker is None:
+                _reranker = CrossEncoder('BAAI/bge-reranker-base')
+    return _reranker
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -112,37 +108,34 @@ grader_model = CrossEncoder('BAAI/bge-reranker-base')
 #   MAX_VERIFIED_CHUNKS=2  → limits blast radius on any remaining FPs
 
 if VAULT_SCHEMA == "new":
-    CORRECT_THRESHOLD   = 0.55
-    AMBIGUOUS_THRESHOLD = 0.25
     PHASE_2_ENABLED     = True
-    print(f"  [Config] New vault  CORRECT={CORRECT_THRESHOLD} AMBIGUOUS={AMBIGUOUS_THRESHOLD} Phase2=ON")
 else:
-    CORRECT_THRESHOLD   = 0.52
-    AMBIGUOUS_THRESHOLD = 0.22
     PHASE_2_ENABLED     = False
-    print(f"  [Config] Legacy vault  CORRECT={CORRECT_THRESHOLD} AMBIGUOUS={AMBIGUOUS_THRESHOLD} Phase2=OFF")
 
-RESCUE_THRESHOLD    = CORRECT_THRESHOLD        # Phase 2 sentence rescue bar
-MAX_VERIFIED_CHUNKS = 2                        # hard cap on returned facts
-BENDY_THRESHOLD     = 0.10
+_initial_settings = load_settings(VAULT_SCHEMA)
+CORRECT_THRESHOLD   = _initial_settings["CORRECT_THRESHOLD"]
+AMBIGUOUS_THRESHOLD = _initial_settings["AMBIGUOUS_THRESHOLD"]
+RESCUE_THRESHOLD    = CORRECT_THRESHOLD
+MAX_VERIFIED_CHUNKS = _initial_settings["MAX_VERIFIED_CHUNKS"]
+BENDY_THRESHOLD     = _initial_settings["BENDY_THRESHOLD"]
+FETCH_K             = _initial_settings["FETCH_K"]
+PROCESS_K           = _initial_settings["PROCESS_K"]
+CHUNK_WORD_LIMIT    = _initial_settings["CHUNK_WORD_LIMIT"]
 
 # Softmax: very gentle pre-filter — only prunes truly extreme tail noise.
 # At 0.90 it removes perhaps 1-2 chunks per query maximum.
 # Previous aggressive values (0.60, 0.70) were cutting genuine answers.
 USE_ADAPTIVE_THRESHOLD = True
-SOFTMAX_MASS_CUTOFF    = 0.90
+SOFTMAX_MASS_CUTOFF    = _initial_settings["SOFTMAX_MASS_CUTOFF"]
 
 
 def reload_config():
     """Hot-reload thresholds from settings.json (called by api.py on save)."""
     global FETCH_K, PROCESS_K, CHUNK_WORD_LIMIT
-    global CORRECT_THRESHOLD, AMBIGUOUS_THRESHOLD, BENDY_THRESHOLD
+    global CORRECT_THRESHOLD, AMBIGUOUS_THRESHOLD, BENDY_THRESHOLD, RESCUE_THRESHOLD
     global MAX_VERIFIED_CHUNKS, SOFTMAX_MASS_CUTOFF
-    import json
-    settings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
     try:
-        with open(settings_path, "r") as f:
-            cfg = json.load(f)
+        cfg = load_settings(VAULT_SCHEMA)
         FETCH_K             = cfg.get("FETCH_K", FETCH_K)
         PROCESS_K           = cfg.get("PROCESS_K", PROCESS_K)
         CHUNK_WORD_LIMIT    = cfg.get("CHUNK_WORD_LIMIT", CHUNK_WORD_LIMIT)
@@ -151,6 +144,7 @@ def reload_config():
         BENDY_THRESHOLD     = cfg.get("BENDY_THRESHOLD", BENDY_THRESHOLD)
         MAX_VERIFIED_CHUNKS = cfg.get("MAX_VERIFIED_CHUNKS", MAX_VERIFIED_CHUNKS)
         SOFTMAX_MASS_CUTOFF = cfg.get("SOFTMAX_MASS_CUTOFF", SOFTMAX_MASS_CUTOFF)
+        RESCUE_THRESHOLD    = CORRECT_THRESHOLD
         log.info("Config reloaded from settings.json")
     except Exception as e:
         log.warning("Could not reload config: %s", e)
@@ -175,7 +169,7 @@ def _adaptive_select(scored_candidates: list) -> list:
     """
     Gentle dynamic noise filtering — keeps chunks covering SOFTMAX_MASS_CUTOFF
     of total probability mass. At 0.90 this is a very light touch.
-    Returns list of (sigmoid_score, chunk, source).
+    Returns list of (sigmoid_score, chunk, source, metadata).
     """
     if not scored_candidates:
         return []
@@ -183,8 +177,8 @@ def _adaptive_select(scored_candidates: list) -> list:
     probs      = _softmax(raw_logits)
     paired     = sorted(zip(probs, scored_candidates), key=lambda x: x[0], reverse=True)
     selected, cumulative = [], 0.0
-    for prob, (raw_logit, chunk, source) in paired:
-        selected.append((_sigmoid(raw_logit), chunk, source))
+    for prob, (raw_logit, chunk, source, metadata) in paired:
+        selected.append((_sigmoid(raw_logit), chunk, source, metadata))
         cumulative += prob
         if cumulative >= SOFTMAX_MASS_CUTOFF:
             break
@@ -211,7 +205,7 @@ def _print_score_histogram(scored_candidates: list):
     max_count = max(buckets) if max(buckets) > 0 else 1
     bar_width  = 24
 
-    print("  ── Score Histogram ─────────────────────────────────")
+    log.info("  ── Score Histogram ─────────────────────────────────")
     for i, count in enumerate(buckets):
         lo  = i * 0.10
         hi  = lo + 0.10
@@ -221,9 +215,9 @@ def _print_score_histogram(scored_candidates: list):
             marker = f"  ← CORRECT ({CORRECT_THRESHOLD})"
         elif AMBIGUOUS_THRESHOLD >= lo and AMBIGUOUS_THRESHOLD < hi:
             marker = f"  ← AMBIGUOUS ({AMBIGUOUS_THRESHOLD})"
-        print(f"  [{lo:.1f}–{hi:.1f})  {bar:<24}  {count}{marker}")
-    print(f"  Schema:{VAULT_SCHEMA}  Softmax:{SOFTMAX_MASS_CUTOFF}  Cap:{MAX_VERIFIED_CHUNKS}")
-    print("  ────────────────────────────────────────────────────")
+        log.info(f"  [{lo:.1f}–{hi:.1f})  {bar:<24}  {count}{marker}")
+    log.info(f"  Schema:{VAULT_SCHEMA}  Softmax:{SOFTMAX_MASS_CUTOFF}  Cap:{MAX_VERIFIED_CHUNKS}")
+    log.info("  ────────────────────────────────────────────────────")
 
 
 # ── Domain routing ─────────────────────────────────────────────────────────────
@@ -249,26 +243,7 @@ def call_llm(
     max_tokens: int = 1024,
     retries: int = 2,
 ) -> str:
-    from groq import RateLimitError
-    delay = 5
-    for attempt in range(1, retries + 2):
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": prompt},
-                ],
-                temperature=0,
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message.content.strip()
-        except RateLimitError:
-            if attempt > retries:
-                raise
-            wait = delay * attempt
-            log.warning("Rate limit hit. Waiting %ds before retry…", wait)
-            time.sleep(wait)
+    return providers.chat(prompt, system, model=model, max_tokens=max_tokens, retries=retries)
 
 
 def _trim(text: str, max_words: int = CHUNK_WORD_LIMIT) -> str:
@@ -376,7 +351,7 @@ Rules:
     return "" if (not result or result == "NO_USEFUL_SENTENCE") else result
 
 
-def supplemental_search(query: str, anchor_sentence: str, n: int = 3) -> tuple:
+def supplemental_search(query: str, anchor_sentence: str, n: int = 3, file_filter: str | None = None) -> tuple:
     prompt = f"""You are a search query builder.
 Given this user question: "{query}"
 And this key sentence from a partially relevant document: "{anchor_sentence}"
@@ -384,14 +359,14 @@ Write a short, keyword-focused search query (under 10 words) combining both.
 Return ONLY the query, no explanation.
 """
     sub_query = call_llm(prompt, model=LIGHT_TEXT_MODEL, max_tokens=32).strip()
-    log.info("    Supplemental sub-query: %r", sub_query)
-    raw = search_vault(sub_query, n_results=n)
+    log.debug("Supplemental search query generated")
+    raw = search_vault(sub_query, n_results=n, file_filter=file_filter)
     return raw["documents"][0], raw["metadatas"][0]
 
 
 def pick_more_relevant(query: str, candidate_a: str, candidate_b: str) -> str:
-    score_a = _sigmoid(float(grader_model.predict([query, candidate_a])))
-    score_b = _sigmoid(float(grader_model.predict([query, candidate_b])))
+    score_a = _sigmoid(float(_get_reranker().predict([query, candidate_a])))
+    score_b = _sigmoid(float(_get_reranker().predict([query, candidate_b])))
     return "A" if score_a >= score_b else "B"
 
 
@@ -399,7 +374,8 @@ def pick_more_relevant(query: str, candidate_a: str, candidate_b: str) -> str:
 # PHASE 2 — TRI-STATE LOGIC ENGINE
 # ══════════════════════════════════════════════════════════════════════════════
 
-def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list) -> tuple:
+def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
+                    file_filter: str | None = None, on_stage=None) -> tuple:
     """
     Phase 2: Tri-State Logic Engine.
 
@@ -415,9 +391,10 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list) -> tuple:
     verified_chunks  = []
     verified_sources = []
     verified_scores  = []
+    verified_metas   = []
 
-    print("━" * 55)
-    print(f"  PHASE 2 — Tri-State ({len(raw_chunks)} chunks)")
+    log.debug("separator")
+    log.info(f"  PHASE 2 — Tri-State ({len(raw_chunks)} chunks)")
 
     has_child_text = any(
         m.get("child_text") for m in raw_metadatas if m
@@ -429,32 +406,35 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list) -> tuple:
         source     = raw_metadatas[i].get("source", "Unknown") if raw_metadatas else "Unknown"
         score_text = (raw_metadatas[i].get("child_text", doc_chunk)
                       if (has_child_text and raw_metadatas) else doc_chunk)
-        raw_logit  = float(grader_model.predict([query, _trim(score_text)]))
-        scored_candidates.append((raw_logit, doc_chunk, source, score_text))
+        raw_logit  = float(_get_reranker().predict([query, _trim(score_text)]))
+        meta = raw_metadatas[i] if raw_metadatas else {}
+        scored_candidates.append((raw_logit, doc_chunk, source, score_text, meta))
 
     scored_candidates.sort(key=lambda x: x[0], reverse=True)
-    _print_score_histogram([(r, c, s) for r, c, s, _ in scored_candidates])
+    if on_stage:
+        on_stage("grading", "Reranking complete; grading passages")
+    _print_score_histogram([(r, c, s) for r, c, s, _, _ in scored_candidates])
 
     top_candidates = scored_candidates[:PROCESS_K]
 
     # Gentle adaptive softmax (0.90 mass — very light touch)
-    softmax_input  = [(r, c, s) for r, c, s, _ in top_candidates]
-    score_text_map = {c: st for _, c, _, st in top_candidates}
+    softmax_input  = [(r, c, s, m) for r, c, s, _, m in top_candidates]
     adaptive_pool  = _adaptive_select(softmax_input)
     n_pruned       = len(top_candidates) - len(adaptive_pool)
     if n_pruned:
-        print(f"  Softmax ({SOFTMAX_MASS_CUTOFF:.0%}): pruned {n_pruned} extreme tail chunk(s)")
+        log.info(f"  Softmax ({SOFTMAX_MASS_CUTOFF:.0%}): pruned {n_pruned} extreme tail chunk(s)")
 
-    print(f"  Grading {len(adaptive_pool)} chunk(s)")
-    print("━" * 55)
+    log.info(f"  Grading {len(adaptive_pool)} chunk(s)")
+    log.debug("separator")
 
     # Tri-state routing
     grades  = []
     chunks  = []
     sources = []
     scores  = []
+    metas   = []
 
-    for i, (sigmoid_score, chunk, source) in enumerate(adaptive_pool):
+    for i, (sigmoid_score, chunk, source, meta) in enumerate(adaptive_pool):
         if sigmoid_score >= CORRECT_THRESHOLD:
             grade = "CORRECT"
         elif sigmoid_score >= AMBIGUOUS_THRESHOLD:
@@ -465,109 +445,118 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list) -> tuple:
         chunks.append(chunk)
         sources.append(source)
         scores.append(sigmoid_score)
+        metas.append(meta)
         icon = {"CORRECT": "✅", "AMBIGUOUS": "🟡", "INCORRECT": "❌"}.get(grade, "❓")
-        print(f"  Rank {i+1} → {icon} {grade:<10} score={sigmoid_score:.3f}  [{source}]")
+        log.info(f"  Rank {i+1} → {icon} {grade:<10} score={sigmoid_score:.3f}  [{source}]")
 
-    print("━" * 55)
-    print(f"  {grades.count('CORRECT')} CORRECT | "
+    log.debug("separator")
+    log.info(f"  {grades.count('CORRECT')} CORRECT | "
           f"{grades.count('AMBIGUOUS')} AMBIGUOUS | "
           f"{grades.count('INCORRECT')} INCORRECT")
-    print("━" * 55)
+    log.debug("separator")
 
     # Keep CORRECT chunks
-    for chunk, grade, source, score in zip(chunks, grades, sources, scores):
+    for chunk, grade, source, score, meta in zip(chunks, grades, sources, scores, metas):
         if grade == "CORRECT":
             verified_chunks.append(chunk)
             verified_sources.append(source)
             verified_scores.append(score)
+            verified_metas.append(meta)
 
     # Phase 2b — Resolve AMBIGUOUS (new vault only)
     ambiguous_indices = [i for i, g in enumerate(grades) if g == "AMBIGUOUS"]
 
     if ambiguous_indices and PHASE_2_ENABLED:
-        print(f"  PHASE 2b — Resolving {len(ambiguous_indices)} AMBIGUOUS chunk(s)")
-        print("━" * 55)
+        log.info(f"  PHASE 2b — Resolving {len(ambiguous_indices)} AMBIGUOUS chunk(s)")
+        log.debug("separator")
 
         for n, idx in enumerate(ambiguous_indices):
             chunk  = chunks[idx]
             source = sources[idx]
-            print(f"  ┌─ [{source}]  ({n+1}/{len(ambiguous_indices)})")
+            original_meta = metas[idx]
+            log.info(f"  ┌─ [{source}]  ({n+1}/{len(ambiguous_indices)})")
 
             best_sentence = extract_best_sentence(query, chunk)
             if not best_sentence:
-                print("  └─ ⚠️  No useful sentence → discarded.")
+                log.info("  └─ ⚠️  No useful sentence → discarded.")
                 if n < len(ambiguous_indices) - 1:
-                    print("  │")
+                    log.debug("separator")
                 continue
 
-            print(f"  │  📌 {best_sentence[:110]!r}")
-            print("  │  🔍 Supplemental search…")
-            supp_chunks, supp_metas = supplemental_search(query, best_sentence, n=3)
+            log.debug("Intermediate passage omitted")
+            log.info("  │  🔍 Supplemental search…")
+            supp_chunks, supp_metas = supplemental_search(query, best_sentence, n=3,
+                                                          file_filter=file_filter)
 
-            best_supp, best_supp_source, best_supp_score = None, source, 0.0
+            best_supp, best_supp_source, best_supp_score, best_supp_meta = None, source, 0.0, {}
             for j, sc in enumerate(supp_chunks):
                 sc_src   = supp_metas[j].get("source", "Unknown") if supp_metas else "Unknown"
                 sc_st    = (supp_metas[j].get("child_text", sc)
                             if (supp_metas and supp_metas[j].get("child_text")) else sc)
-                sc_score = _sigmoid(float(grader_model.predict([query, _trim(sc_st)])))
+                sc_score = _sigmoid(float(_get_reranker().predict([query, _trim(sc_st)])))
                 sc_grade = ("CORRECT" if sc_score >= CORRECT_THRESHOLD else
                             "AMBIGUOUS" if sc_score >= AMBIGUOUS_THRESHOLD else "INCORRECT")
                 icon     = {"CORRECT": "✅", "AMBIGUOUS": "🟡", "INCORRECT": "❌"}.get(sc_grade)
-                print(f"  │    Supp {j+1}/3 → {icon} score={sc_score:.3f}  [{sc_src}]")
+                log.info(f"  │    Supp {j+1}/3 → {icon} score={sc_score:.3f}  [{sc_src}]")
                 if sc_grade == "CORRECT" and best_supp is None:
                     best_supp, best_supp_source, best_supp_score = sc, sc_src, sc_score
+                    best_supp_meta = supp_metas[j] if supp_metas else {}
 
             if best_supp:
                 winner = pick_more_relevant(query, best_sentence, _trim(best_supp, 150))
                 if winner == "B":
-                    print("  └─ ✅ Supplemental chunk kept.")
+                    log.info("  └─ ✅ Supplemental chunk kept.")
                     verified_chunks.append(best_supp)
                     verified_sources.append(best_supp_source)
                     verified_scores.append(best_supp_score)
+                    verified_metas.append(best_supp_meta)
                 else:
-                    rs = _sigmoid(float(grader_model.predict([query, best_sentence])))
+                    rs = _sigmoid(float(_get_reranker().predict([query, best_sentence])))
                     if rs >= RESCUE_THRESHOLD:
-                        print(f"  └─ ✅ Sentence kept (score={rs:.3f}).")
+                        log.info(f"  └─ ✅ Sentence kept (score={rs:.3f}).")
                         verified_chunks.append(best_sentence)
                         verified_sources.append(source)
                         verified_scores.append(rs)
+                        verified_metas.append(original_meta)
                     else:
-                        print(f"  └─ ❌ Sentence {rs:.3f} < {RESCUE_THRESHOLD:.2f} → discarded.")
+                        log.info(f"  └─ ❌ Sentence {rs:.3f} < {RESCUE_THRESHOLD:.2f} → discarded.")
             else:
-                rs = _sigmoid(float(grader_model.predict([query, best_sentence])))
+                rs = _sigmoid(float(_get_reranker().predict([query, best_sentence])))
                 if rs >= RESCUE_THRESHOLD:
-                    print(f"  └─ 📎 Sentence re-graded {rs:.3f} → kept.")
+                    log.info(f"  └─ 📎 Sentence re-graded {rs:.3f} → kept.")
                     verified_chunks.append(best_sentence)
                     verified_sources.append(source)
                     verified_scores.append(rs)
+                    verified_metas.append(original_meta)
                 else:
-                    print(f"  └─ ❌ Sentence {rs:.3f} < {RESCUE_THRESHOLD:.2f} → discarded.")
+                    log.info(f"  └─ ❌ Sentence {rs:.3f} < {RESCUE_THRESHOLD:.2f} → discarded.")
 
             if n < len(ambiguous_indices) - 1:
-                print("  │")
-        print("━" * 55)
+                log.debug("separator")
+        log.debug("separator")
 
     elif ambiguous_indices and not PHASE_2_ENABLED:
-        print(f"  [Phase 2b SKIPPED — legacy] {len(ambiguous_indices)} AMBIGUOUS discarded.")
-        print("━" * 55)
+        log.info(f"  [Phase 2b SKIPPED — legacy] {len(ambiguous_indices)} AMBIGUOUS discarded.")
+        log.debug("separator")
 
     # Hard cap — top MAX_VERIFIED_CHUNKS by score
     if len(verified_chunks) > MAX_VERIFIED_CHUNKS:
         combined = sorted(
-            zip(verified_scores, verified_chunks, verified_sources),
+            zip(verified_scores, verified_chunks, verified_sources, verified_metas),
             key=lambda x: x[0], reverse=True
         )[:MAX_VERIFIED_CHUNKS]
         dropped          = len(verified_chunks) - MAX_VERIFIED_CHUNKS
         verified_scores  = [x[0] for x in combined]
         verified_chunks  = [x[1] for x in combined]
         verified_sources = [x[2] for x in combined]
-        print(f"  [Cap={MAX_VERIFIED_CHUNKS}] Dropped {dropped} lowest-scoring chunk(s).")
-        print("━" * 55)
+        verified_metas   = [x[3] for x in combined]
+        log.info(f"  [Cap={MAX_VERIFIED_CHUNKS}] Dropped {dropped} lowest-scoring chunk(s).")
+        log.debug("separator")
 
-    print(f"  RESULT — {len(verified_chunks)} item(s) in Verified Context Array.")
-    print("━" * 55)
+    log.info(f"  RESULT — {len(verified_chunks)} item(s) in Verified Context Array.")
+    log.debug("separator")
 
-    return verified_chunks, verified_sources
+    return verified_chunks, verified_sources, verified_metas
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -629,7 +618,20 @@ Related Context:
     return call_llm(prompt, model=ANSWER_MODEL, max_tokens=900)
 
 
-def run_logic_engine(user_query: str) -> dict:
+def _evidence(chunks: list, sources: list, metadatas: list) -> list:
+    items = []
+    for chunk, source, meta in zip(chunks, sources, metadatas):
+        page_index = meta.get("page_index") if meta else None
+        page_index = page_index if isinstance(page_index, int) and page_index >= 0 else None
+        items.append({"id": meta.get("chunk_id") if meta else None,
+                      "document_id": meta.get("document_id") if meta else None,
+                      "source": source, "page_index": page_index,
+                      "page_number": page_index + 1 if page_index is not None else None,
+                      "text": chunk})
+    return items
+
+
+def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=None) -> dict:
     """
     Master CRAG pipeline — all 4 phases.
 
@@ -639,21 +641,29 @@ def run_logic_engine(user_query: str) -> dict:
     Phase 4: Adaptive fallback + controlled generation
     """
     query_domain = detect_query_domain(user_query)
+    def emit(step, detail):
+        if on_stage:
+            on_stage(step, detail)
+
+    emit("fetching", "Searching the selected vault")
     if query_domain:
-        print(f"  [Domain Filter] Restricting to: [{query_domain}]")
+        log.info(f"  [Domain Filter] Restricting to: [{query_domain}]")
 
     # ── Attempt 1 ─────────────────────────────────────────────────────────────
-    raw       = search_vault(user_query, n_results=FETCH_K, domain_filter=query_domain)
+    raw       = search_vault(user_query, n_results=FETCH_K, domain_filter=query_domain,
+                             file_filter=file_filter)
     chunks    = raw["documents"][0]
     metadatas = raw["metadatas"][0]
 
     if not chunks and query_domain:
-        print("  [Domain Filter] No results — retrying without filter.")
-        raw       = search_vault(user_query, n_results=FETCH_K)
+        log.info("  [Domain Filter] No results — retrying without filter.")
+        raw       = search_vault(user_query, n_results=FETCH_K, file_filter=file_filter)
         chunks    = raw["documents"][0]
         metadatas = raw["metadatas"][0]
 
-    verified, sources = evaluate_chunks(user_query, chunks, metadatas)
+    emit("reranking", "Reranking retrieved passages")
+    verified, sources, verified_metas = evaluate_chunks(user_query, chunks, metadatas,
+                                                       file_filter=file_filter, on_stage=on_stage)
 
     # ── Phase 3: Pre-flight combined relevance check ───────────────────────────
     # Run ONLY when verified chunks exist.
@@ -661,77 +671,89 @@ def run_logic_engine(user_query: str) -> dict:
     #   PASS → return chunks (evaluator will grade them individually)
     #   FAIL → return [] → evaluator sees empty result → fn++ only, fp += 0
     if verified:
-        print(f"  PHASE 3 — Pre-flight combined relevance check ({len(verified)} chunk(s))...")
+        emit("resolving", "Checking combined evidence")
+        log.info(f"  PHASE 3 — Pre-flight combined relevance check ({len(verified)} chunk(s))...")
         combined_ok = _combined_relevance_check(user_query, verified)
         if combined_ok:
-            print("  ✅ Combined check PASSED → returning verified context")
+            log.info("  ✅ Combined check PASSED → returning verified context")
+            emit("generating", "Generating a cited answer")
             return {
                 "status":     "success",
                 "answer":     generate_final_answer(user_query, verified, sources),
                 "facts":      verified,
+                "evidence":   _evidence(verified, sources, verified_metas),
                 "sources":    list(set(sources)),
                 "query_used": user_query,
             }
         else:
-            print("  ❌ Combined check FAILED → returning [] to avoid FP injection")
+            log.info("  ❌ Combined check FAILED → returning [] to avoid FP injection")
             # Fall through to rewrite attempt below
 
     # ── Attempt 2: Rewrite (Phase 4 fallback) ─────────────────────────────────
-    print()
-    print("━" * 55)
-    print("  ⚠️  PHASE 4 FALLBACK — rewriting query")
+    log.debug("separator")
+    log.debug("separator")
+    log.info("  ⚠️  PHASE 4 FALLBACK — rewriting query")
     new_query = rewrite_query(user_query)
-    print(f"  Rewritten: {new_query!r}")
-    print("━" * 55)
-    print()
+    log.debug("Query rewritten")
+    log.debug("separator")
+    log.debug("separator")
 
-    raw2       = search_vault(new_query, n_results=FETCH_K)
+    emit("fetching", "Searching again with the rewritten query")
+    raw2       = search_vault(new_query, n_results=FETCH_K, file_filter=file_filter)
     chunks2    = raw2["documents"][0]
     metadatas2 = raw2["metadatas"][0]
 
-    verified2, sources2 = evaluate_chunks(new_query, chunks2, metadatas2)
+    emit("reranking", "Reranking fallback passages")
+    verified2, sources2, verified_metas2 = evaluate_chunks(new_query, chunks2, metadatas2,
+                                                            file_filter=file_filter, on_stage=on_stage)
 
     # Phase 3 check on rewritten query results too
     if verified2:
-        print(f"  PHASE 3 — Combined check on fallback results ({len(verified2)} chunk(s))...")
+        emit("resolving", "Checking fallback evidence")
+        log.info(f"  PHASE 3 — Combined check on fallback results ({len(verified2)} chunk(s))...")
         combined_ok2 = _combined_relevance_check(user_query, verified2)
         if combined_ok2:
-            print("  ✅ Combined check PASSED")
+            log.info("  ✅ Combined check PASSED")
+            emit("generating", "Generating a cited answer")
             return {
                 "status":     "fallback_success",
                 "answer":     generate_final_answer(user_query, verified2, sources2),
                 "facts":      verified2,
+                "evidence":   _evidence(verified2, sources2, verified_metas2),
                 "sources":    list(set(sources2)),
                 "query_used": new_query,
             }
         else:
-            print("  ❌ Combined check FAILED on fallback → returning []")
+            log.info("  ❌ Combined check FAILED on fallback → returning []")
 
     # ── Attempt 3: Bendy mode ─────────────────────────────────────────────────
-    print()
-    print("━" * 55)
-    print("  🔗 BENDY MODE — partial match")
+    log.debug("separator")
+    log.debug("separator")
+    log.info("  🔗 BENDY MODE — partial match")
 
     scored_bendy = []
     for i, chunk in enumerate(chunks2):
         score_text = (metadatas2[i].get("child_text", chunk)
                       if (metadatas2 and metadatas2[i].get("child_text")) else chunk)
-        score = _sigmoid(float(grader_model.predict([user_query, _trim(score_text)])))
+        score = _sigmoid(float(_get_reranker().predict([user_query, _trim(score_text)])))
         if score >= BENDY_THRESHOLD:
             src = metadatas2[i].get("source", "Unknown") if metadatas2 else "Unknown"
-            scored_bendy.append((score, chunk, src))
+            scored_bendy.append((score, chunk, src, metadatas2[i] if metadatas2 else {}))
 
     scored_bendy.sort(key=lambda x: x[0], reverse=True)
     scored_bendy = scored_bendy[:2]
     related_chunks  = [x[1] for x in scored_bendy]
     related_sources = [x[2] for x in scored_bendy]
+    related_metas   = [x[3] for x in scored_bendy]
 
     if related_chunks:
         # Bendy mode: skip combined check (soft answer clearly labels uncertainty)
+        emit("generating", "Generating a partial answer")
         return {
             "status":     "partial_match",
             "answer":     generate_soft_answer(user_query, related_chunks, related_sources),
             "facts":      related_chunks,
+            "evidence":   _evidence(related_chunks, related_sources, related_metas),
             "sources":    list(set(related_sources)),
             "query_used": new_query,
         }
@@ -740,6 +762,7 @@ def run_logic_engine(user_query: str) -> dict:
         "status":     "failed",
         "answer":     "No information detected from the papers for your query.",
         "facts":      [],
+        "evidence":   [],
         "sources":    [],
         "query_used": new_query,
     }

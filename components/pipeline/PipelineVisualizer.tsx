@@ -3,6 +3,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Search, Layers, Filter, Shield, MessageSquare, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { streamQuery, type SSEEvent } from "@/lib/api";
+import { STATUS_COLORS } from "@/lib/constants";
 
 const PIPELINE_STAGES = [
   { id: "fetching", label: "Phase 1: Hybrid Retrieval", icon: Search, desc: "Dense + BM25 + RRF fusion from ChromaDB" },
@@ -32,19 +33,17 @@ export default function PipelineVisualizer() {
     try {
       const result = await streamQuery(query, (event: SSEEvent) => {
         if (event.step === "done") {
-          // Mark all remaining stages as done
-          PIPELINE_STAGES.forEach((stage) => {
-            s[stage.id] = "done";
-          });
+          for (const stage of PIPELINE_STAGES) {
+            if (s[stage.id] === "active") s[stage.id] = "done";
+          }
           setStatuses({ ...s });
           return;
         }
 
-        // Mark previous stages as done and current as active
         const idx = PIPELINE_STAGES.findIndex((st) => st.id === event.step);
         if (idx >= 0) {
-          for (let i = 0; i < idx; i++) {
-            s[PIPELINE_STAGES[i].id] = "done";
+          for (const stage of PIPELINE_STAGES) {
+            if (s[stage.id] === "active") s[stage.id] = "done";
           }
           s[PIPELINE_STAGES[idx].id] = "active";
           setStatuses({ ...s });
@@ -155,7 +154,7 @@ export default function PipelineVisualizer() {
                 background: `${statusBadgeColor[pipelineStatus] || "var(--text-muted)"}20`,
                 color: statusBadgeColor[pipelineStatus] || "var(--text-muted)",
               }}>
-                {pipelineStatus.toUpperCase()}
+                {STATUS_COLORS[pipelineStatus as keyof typeof STATUS_COLORS]?.label || pipelineStatus}
               </span>
             )}
           </div>

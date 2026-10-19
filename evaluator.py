@@ -1,247 +1,180 @@
-import os
+"""Evidence-gated document retrieval evaluation before CRAG reranking/generation."""
+import argparse
+import csv
+import hashlib
 import json
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from logic_engine import run_logic_engine, VAULT_SCHEMA
-from langchain_groq import ChatGroq
+import subprocess
+from collections import Counter
+from pathlib import Path
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-DATASET_FILE = "golden_dataset.json"
-TOTAL_DOCS   = 60
+from evaluation.dataset import audit_records, load_dataset
+from evaluation.metrics import KS, macro_average, score_ranking
+from settings_config import load_settings
 
-# ── Load grader model ──────────────────────────────────────────────────────────
-print("Loading grader model...")
-
-llm_grader   = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
-GRADER_LABEL = "LLM (llama-3.1-8b-instant)"
-
-print(f"Grader model loaded.  Pipeline vault schema: [{VAULT_SCHEMA}]\n")
-
-if VAULT_SCHEMA == "legacy":
-    print("━" * 60)
-    print("  NOTE: Running evaluation on a LEGACY vault.")
-    print("  For maximum metrics, re-ingest first:")
-    print("    rm -rf ./vector_vault && python database.py")
-    print("  The pipeline will use lower thresholds automatically.")
-    print("━" * 60)
-    print()
+ROOT = Path(__file__).resolve().parent
+CHUNK_CANDIDATE_LIMIT = 10
 
 
-# ── Grader ─────────────────────────────────────────────────────────────────────
-
-def grade_with_llm(query: str, ground_truth: str, fact: str,
-                   strict: bool = False) -> bool:
-    """
-    strict=True  → Tier-1: does the combined context capture the ground truth?
-    strict=False → Tier-2: is this individual chunk relevant to the query?
-    """
-    if strict:
-        task = ("Does the 'Retrieved Context' contain the specific information "
-                "found in the 'Ground Truth Info'?")
-    else:
-        task = ("Does the 'Retrieved Context' contain information relevant and "
-                "useful for answering the Query, even if it only covers part of "
-                "the answer?")
-
-    prompt = f"""
-Query: {query}
-Ground Truth Info: {ground_truth}
-Retrieved Context: {fact}
-
-Task: {task}
-Respond with ONLY 'YES' or 'NO'.
-"""
-    try:
-        response = llm_grader.invoke(prompt).content.strip().upper()
-        return "YES" in response
-    except Exception as e:
-        print(f"  [!] LLM Grader Error: {e}")
-        return False
-
-
-# ── Metrics ────────────────────────────────────────────────────────────────────
-
-def compute_metrics(tp, fp, fn, tn):
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-    recall    = tp / (tp + fn) if (tp + fn) > 0 else 0
-    f1        = (2 * precision * recall / (precision + recall)
-                 if (precision + recall) > 0 else 0)
-    accuracy  = ((tp + tn) / (tp + tn + fp + fn)
-                 if (tp + tn + fp + fn) > 0 else 0)
-    return precision, recall, f1, accuracy
-
-
-# ── Plots ──────────────────────────────────────────────────────────────────────
-
-ARTIFACTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "artifacts")
-os.makedirs(ARTIFACTS_DIR, exist_ok=True)
-
-
-def plot_for_grader(grader_name, tp, fp, fn, tn,
-                    precision, recall, f1, accuracy):
-    safe = (grader_name
-            .replace(" ", "_").replace("(", "").replace(")", "")
-            .replace("—", "").replace("-", "").lower())
-    safe = "_".join(safe.split())
-
-    # Confusion matrix
-    plt.figure(figsize=(6, 5))
-    cm = np.array([[tn, fp], [fn, tp]])
-    sns.heatmap(
-        cm, annot=True, fmt="d", cmap="Blues", cbar=False,
-        xticklabels=["Negative (Ignored)", "Positive (Kept)"],
-        yticklabels=["Negative (Irrelevant)", "Positive (Relevant)"],
-    )
-    plt.title(f"CRAG — {grader_name}\nConfusion Matrix")
-    plt.xlabel("Predicted Label")
-    plt.ylabel("True Label")
-    plt.tight_layout()
-    fname_cm = os.path.join(ARTIFACTS_DIR, f"confusion_matrix_{safe}.png")
-    plt.savefig(fname_cm, dpi=300)
-    plt.close()
-    print(f"  └─ Saved {fname_cm}")
-
-    # Metrics bar chart
-    plt.figure(figsize=(8, 5))
-    metrics_labels = ["Precision", "Recall", "F1 Score", "Accuracy"]
-    scores         = [precision, recall, f1, accuracy]
-    ax             = sns.barplot(x=metrics_labels, y=scores, palette="viridis")
-    plt.ylim(0, 1.15)
-    plt.title(f"CRAG — {grader_name}\nPerformance Metrics  [vault: {VAULT_SCHEMA}]")
-    plt.ylabel("Score (0.0 to 1.0)")
-    for i, v in enumerate(scores):
-        ax.text(i, v + 0.02, f"{v:.2f}", ha='center', fontweight='bold')
-    plt.tight_layout()
-    fname_mc = os.path.join(ARTIFACTS_DIR, f"metrics_chart_{safe}.png")
-    plt.savefig(fname_mc, dpi=300)
-    plt.close()
-    print(f"  └─ Saved {fname_mc}")
-
-
-# ── Core evaluation loop ───────────────────────────────────────────────────────
-
-# ── Core evaluation loop ───────────────────────────────────────────────────────
-def evaluate_with_grader(test_cases, grader_fn, grader_name):
-    tp, fp, fn, tn = 0, 0, 0, 0
-    total = len(test_cases)
-
-    print(f"\n{'━'*70}")
-    print(f"  GRADER: {grader_name}  |  Vault: {VAULT_SCHEMA}")
-    print(f"{'━'*70}")
-
-    for i, case in enumerate(test_cases):
-        query = case["question"]
-
-        # Prefer canonical ground_truth; fallback to first context if missing/empty.
-        gt = case.get("ground_truth") or (
-            case["contexts"][0] if case.get("contexts") else ""
-        )
-
-        if not gt:
-            print(f"\n  Test {i+1}/{total}: '{query[:60]}...'")
-            print("  └─ Skipped: no ground_truth or contexts available.")
-            print("-" * 50)
-            continue
-
-        print(f"\n  Test {i+1}/{total}: '{query[:60]}...'")
-
-        pipeline    = run_logic_engine(query)
-        final_facts = pipeline["facts"]
-
-        print(f"  Pipeline status: {pipeline['status']}  |  facts: {len(final_facts)}")
-
-        # Empty pipeline → definite miss
-        if not final_facts:
-            fn += 1
-            tn += TOTAL_DOCS - 1
-            print("  └─ Empty → FN")
-            print("-" * 50)
-            continue
-
-        # ── Tier 1: combined check ─────────────────────────────────────────────
-        combined_ok = grade_with_llm(
-            query, gt, "\n".join(final_facts), strict=True
-        )
-
-        if not combined_ok:
-            fn += 1
-            fp += len(final_facts)
-            tn += max(0, (TOTAL_DOCS - 1) - len(final_facts))
-            print(f"  └─ Combined check FAILED → FN + {len(final_facts)} FPs")
-            print("-" * 50)
-            continue
-
-        # ── Tier 2: per-chunk grading ──────────────────────────────────────────
-        print("  └─ Combined check PASSED. Grading individually...")
-        for j, fact in enumerate(final_facts):
-            relevant = grader_fn(query, gt, fact)
-            if relevant:
-                tp += 1
-                print(f"     Fact {j+1} → TP")
+def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_only=False,
+                     index_tag="unrecorded", code_commit="unknown", config_sha256="unrecorded"):
+    if limit is not None and (type(limit) is not int or limit < 1):
+        raise ValueError("--limit must be a positive integer")
+    audit = audit_records(records)
+    output, attempted = [], 0
+    for record, row in zip(records, audit):
+        result = {key: value for key, value in row.items()
+                  if key not in ("evidence", "judged_nonrelevant_papers")}
+        result.update(dataset_sha256=dataset_hash, index_tag=index_tag, code_commit=code_commit,
+                      config_sha256=config_sha256,
+                      retrieved_papers=[], retrieved_chunks=[], metrics={}, error=None,
+                      chunk_candidates_returned=0, distinct_papers_returned=0,
+                      gold_evidence_refs=[
+                          {"source_filename": item.get("source_filename"), "page": item.get("page")}
+                          for item in row["evidence"] if isinstance(item, dict)])
+        if row["status"] == "eligible_abstention":
+            result["status"] = "skipped_unanswerable"
+        elif row["status"] == "eligible_retrieval":
+            if audit_only:
+                result["status"] = "skipped_audit_only"
+            elif limit is not None and attempted >= limit:
+                result["status"] = "skipped_limit"
             else:
-                fp += 1
-                print(f"     Fact {j+1} → FP")
-
-        tn += max(0, (TOTAL_DOCS - 1) - len(final_facts))
-        print("-" * 50)
-
-    precision, recall, f1, accuracy = compute_metrics(tp, fp, fn, tn)
-
-    print(f"\n  Raw counts → TP={tp}  FP={fp}  FN={fn}  TN={tn}")
-    print(f"  Precision={precision:.4f}  Recall={recall:.4f}  "
-          f"F1={f1:.4f}  Accuracy={accuracy:.4f}")
-
-    return {
-        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
-        "precision": precision, "recall": recall,
-        "f1": f1, "accuracy": accuracy,
+                attempted += 1
+                try:
+                    if retriever is None:
+                        from database import search_vault
+                        retriever = search_vault
+                    raw = retriever(record["question"], n_results=CHUNK_CANDIDATE_LIMIT)
+                    # shortcut: score only the first ten returned chunks; increase the
+                    # candidate window before claiming top-ten coverage of unique papers.
+                    metas = raw["metadatas"][0][:CHUNK_CANDIDATE_LIMIT]
+                    if not all(isinstance(meta, dict) and meta.get("source") for meta in metas):
+                        raise ValueError("missing_source_metadata")
+                    result["retrieved_chunks"] = [
+                        {"rank": rank, "source_filename": meta["source"],
+                         "chunk_id": meta.get("chunk_id"),
+                         "page": (meta["page_index"] + 1
+                                  if type(meta.get("page_index")) is int else None),
+                         "score": None}
+                        for rank, meta in enumerate(metas, 1)]
+                    ranked = list(dict.fromkeys(meta["source"] for meta in metas))[:CHUNK_CANDIDATE_LIMIT]
+                    result["chunk_candidates_returned"] = len(metas)
+                    result["distinct_papers_returned"] = len(ranked)
+                    result["retrieved_papers"] = [
+                        {"rank": rank, "source_filename": name, "score": None}
+                        for rank, name in enumerate(ranked, 1)]
+                    grades = None
+                    if all(item.get("relevance_grade") is not None for item in row["evidence"]):
+                        grades = {}
+                        for item in row["evidence"]:
+                            name = item["source_filename"]
+                            grades[name] = max(grades.get(name, 0), item["relevance_grade"])
+                    judged = set(row["gold_papers"]) | set(row["judged_nonrelevant_papers"])
+                    result["metrics"] = score_ranking(
+                        ranked, row["gold_papers"], grades=grades, judged_ids=judged)
+                    result["status"] = "scored"
+                except Exception as exc:
+                    result["status"] = "failed"
+                    result["error"] = f"{type(exc).__name__}: {exc}"
+        output.append(result)
+    counts = Counter(row["status"] for row in output)
+    summary = {
+        "dataset_sha256": dataset_hash, "index_tag": index_tag, "code_commit": code_commit,
+        "config_sha256": config_sha256,
+        "config": {"retrieval": "database.search_vault",
+                   "chunk_candidate_limit": CHUNK_CANDIDATE_LIMIT,
+                   "paper_ranking": "first occurrence among top ten returned chunks",
+                   "k": list(KS), "limit": limit, "level": "source_filename",
+                   "mode": "hybrid_pre_crag_no_llm"},
+        "counts": {"present": len(records), "valid": sum(r["status"] != "invalid" for r in audit),
+                   "eligible_retrieval": sum(r["status"] == "eligible_retrieval" for r in audit),
+                   "eligible_abstention": sum(r["status"] == "eligible_abstention" for r in audit),
+                   "excluded": sum(r["status"] in ("invalid", "needs_human_review") for r in audit),
+                   "attempted": attempted, "scored": counts["scored"],
+                   "failed": counts["failed"], "skipped": counts["skipped_limit"] +
+                   counts["skipped_unanswerable"] + counts["skipped_audit_only"]},
+        "metrics": macro_average(row["metrics"] for row in output if row["status"] == "scored"),
+        "baseline_status": ("not_run_audit_only" if audit_only else
+                            "blocked_no_verified_labels" if not any(
+                                r["status"] == "eligible_retrieval" for r in audit) else
+                            "retrieval_failed" if not counts["scored"] else
+                            "partial_results" if counts["failed"] else "pilot_only"),
     }
+    return audit, output, summary
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+def write_reports(output_dir, audit, results, summary):
+    directory = Path(output_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / "annotation-gaps.csv").open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=["id", "position", "status", "reasons",
+                                                  "evidence_status", "possible_correction",
+                                                  "needs_human_review"])
+        writer.writeheader()
+        for row in audit:
+            writer.writerow({"id": row["id"], "position": row["position"],
+                             "status": row["status"], "reasons": ";".join(row["reasons"]),
+                             "evidence_status": "verified_recorded" if row["status"] == "eligible_retrieval"
+                             else "not_verified",
+                             "possible_correction": "Check original PDF; annotate source, page, quote and answer",
+                             "needs_human_review": row["status"] != "eligible_retrieval"})
+    with (directory / "per-question.jsonl").open("w", encoding="utf-8") as file:
+        for row in results:
+            file.write(json.dumps(row, ensure_ascii=False) + "\n")
+    (directory / "aggregate.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    lines = [
+        "# Retrieval evaluation", "",
+        f"Status: **{summary['baseline_status']}**; document-level hybrid search before CRAG.",
+        f"Dataset SHA-256: {summary['dataset_sha256']}; index tag: {summary['index_tag']}; "
+        f"code commit: {summary['code_commit']}.", "",
+        "Counts: " + ", ".join(f"{key}={value}" for key, value in summary["counts"].items()) + ".",
+        f"Config: {json.dumps(summary['config'], sort_keys=True)}", "",
+        "Paper ranks are first occurrences within the top ten returned chunks. "
+        "Fewer than K distinct papers are padded as misses; this is not a search "
+        "over the top K unique papers.", "",
+        "Macro means across scored answerable queries (missing ranks count as non-relevant):", "",
+    ]
+    if summary["metrics"]:
+        lines += ["| Metric | Mean | N |", "|---|---:|---:|"]
+        lines += [f"| {key} | {value['mean']:.4f} | {value['count']} |"
+                  for key, value in summary["metrics"].items()]
+    else:
+        lines += ["No verified relevance labels; no retrieval quality score is reportable."]
+    lines += ["", "Unanswerable questions and failed queries are excluded from means. "
+              "Answer, citation, faithfulness and abstention require separate human review.", ""]
+    (directory / "report.md").write_text("\n".join(lines), encoding="utf-8")
 
-def run_ml_evaluation():
-    if not os.path.exists(DATASET_FILE):
-        print(f"Error: {DATASET_FILE} not found!")
-        return
 
-    with open(DATASET_FILE, "r") as f:
-        all_cases = json.load(f)
-
-    test_cases = all_cases[:10]
-
-    result = evaluate_with_grader(test_cases, grade_with_llm, GRADER_LABEL)
-
-    print("\n" + "━" * 70)
-    print(f"  EVALUATION RESULTS — {GRADER_LABEL}  [vault: {VAULT_SCHEMA}]")
-    print("━" * 70)
-    print(f"  {'Metric':<20} {'Score':>10}")
-    print("  " + "-" * 30)
-    print(f"  {'Accuracy':<20} {result['accuracy']:>10.4f}")
-    print(f"  {'Precision':<20} {result['precision']:>10.4f}")
-    print(f"  {'Recall':<20} {result['recall']:>10.4f}")
-    print(f"  {'F1 Score':<20} {result['f1']:>10.4f}")
-    print("━" * 70)
-
-    if VAULT_SCHEMA == "legacy":
-        print()
-        print("  To improve these metrics, re-ingest with the new pipeline:")
-        print("    rm -rf ./vector_vault && python database.py")
-
-    print("\nGenerating visualizations...")
-    plot_for_grader(
-        GRADER_LABEL,
-        result["tp"], result["fp"], result["fn"], result["tn"],
-        result["precision"], result["recall"], result["f1"], result["accuracy"],
-    )
-    print("\nAll visualizations saved.")
-
-    # Return results keyed by grader label for api.py consumption
-    return {GRADER_LABEL: result}
+def run_ml_evaluation(dataset=ROOT / "golden_dataset.json",
+                      output_dir=ROOT / "evaluation_results", limit=None,
+                      audit_only=False, index_tag=None, code_commit=None):
+    records, digest = load_dataset(dataset)
+    if (not audit_only and any(row["status"] == "eligible_retrieval"
+                           for row in audit_records(records)) and
+            (not isinstance(index_tag, str) or not index_tag.strip()
+             or index_tag.strip().lower() in {"unrecorded", "unknown"})):
+        raise ValueError("A fixed --index-tag is required for a scored retrieval run")
+    if code_commit is None:
+        process = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=ROOT,
+                                 capture_output=True, text=True, check=False)
+        code_commit = process.stdout.strip() if process.returncode == 0 else "unknown"
+    settings = load_settings()
+    config_sha256 = hashlib.sha256(
+        json.dumps(settings, sort_keys=True).encode("utf-8")).hexdigest()
+    audit, rows, summary = evaluate_dataset(
+        records, digest, limit=limit, audit_only=audit_only,
+        index_tag=index_tag, code_commit=code_commit, config_sha256=config_sha256)
+    write_reports(output_dir, audit, rows, summary)
+    return summary
 
 
 if __name__ == "__main__":
-    import logging
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    run_ml_evaluation()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dataset", type=Path, default=ROOT / "golden_dataset.json")
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "evaluation_results")
+    parser.add_argument("--limit", type=int, help="Explicit cap on eligible answerable queries")
+    parser.add_argument("--audit-only", action="store_true")
+    parser.add_argument("--index-tag", help="Required for a scored retrieval run; identify the fixed local index")
+    parser.add_argument("--code-commit")
+    args = parser.parse_args()
+    print(json.dumps(run_ml_evaluation(**vars(args)), indent=2))

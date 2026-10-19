@@ -6,7 +6,7 @@ export default function AnalyticsPage() {
     <div style={{ padding: 32 }}>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: "2rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 8 }}>Analytics Dashboard</h1>
-        <p style={{ color: "var(--text-muted)" }}>Evaluation metrics, confusion matrices, and grader comparison.</p>
+        <p style={{ color: "var(--text-muted)" }}>Evidence-gated document retrieval metrics and annotation readiness.</p>
       </div>
       <AnalyticsDashboard />
     </div>

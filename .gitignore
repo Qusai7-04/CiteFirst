@@ -12,6 +12,7 @@ __pycache__/
 chroma_db/
 vector_vault/
 papers/
+*.pdf
 *.sqlite3
 
 # ── Generated Evaluation Output ─────────────────────────
@@ -53,6 +54,7 @@ bm25_corpus.json
 # ── AI tool config (auto-generated, not needed) ────────
 .code-review-graph/
 .claude/
+.agents/
 GEMINI.md
 CLAUDE.md
 .cursorrules

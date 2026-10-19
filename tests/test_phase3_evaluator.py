@@ -104,3 +104,83 @@ def test_audit_only_never_imports_or_calls_retrieval(tmp_path):
     assert per_query["config_sha256"] == summary["config_sha256"]
     assert summary["counts"]["present"] == 1
     assert summary["config"]["limit"] is None
+
+
+def test_seven_chunks_same_paper_and_cutoff_coverage():
+    rows = [annotated()]
+
+    def seven_and_three(question, n_results):
+        metas = ([{"source": "dominant.pdf", "chunk_id": f"c{i}"} for i in range(7)] +
+                 [{"source": f"other_{i}.pdf", "chunk_id": f"o{i}"} for i in range(3)])
+        return {"metadatas": [metas]}
+
+    _, results, summary = evaluate_dataset(rows, "hash", retriever=seven_and_three)
+    assert results[0]["chunk_candidates_returned"] == 10
+    assert results[0]["distinct_papers_returned"] == 4
+    assert [p["source_filename"] for p in results[0]["retrieved_papers"]] == [
+        "dominant.pdf", "other_0.pdf", "other_1.pdf", "other_2.pdf"
+    ]
+    assert results[0]["cutoff_coverage"] == {
+        "k_1": True, "k_3": True, "k_5": False, "k_10": False
+    }
+    assert summary["counts"]["cutoff_coverage"] == {
+        "k_1": 1, "k_3": 1, "k_5": 0, "k_10": 0
+    }
+
+
+def test_document_pool_protocol_differs_from_ten_chunks():
+    rows = [annotated()]
+    calls = []
+
+    def pool_retriever(question, n_results):
+        calls.append(n_results)
+        # 15 chunks from 12 distinct papers
+        metas = ([{"source": f"paper_{i}.pdf", "chunk_id": f"c{i}"} for i in range(12)] +
+                 [{"source": "paper_0.pdf", "chunk_id": "c12"},
+                  {"source": "paper_1.pdf", "chunk_id": "c13"},
+                  {"source": "paper_2.pdf", "chunk_id": "c14"}])
+        return {"metadatas": [metas]}
+
+    _, results_default, summary_default = evaluate_dataset(
+        rows, "hash", retriever=pool_retriever, protocol="within_first_ten_chunks")
+    assert calls[-1] == 10
+    assert summary_default["config"]["protocol"] == "within_first_ten_chunks"
+    assert summary_default["config"]["chunk_candidate_limit"] == 10
+    assert results_default[0]["chunk_candidates_returned"] == 10
+    assert results_default[0]["distinct_papers_returned"] == 10
+
+    _, results_pool, summary_pool = evaluate_dataset(
+        rows, "hash", retriever=pool_retriever, protocol="document_pool_top_k", candidate_pool_size=20)
+    assert calls[-1] == 20
+    assert summary_pool["config"]["protocol"] == "document_pool_top_k"
+    assert summary_pool["config"]["candidate_pool_size"] == 20
+    assert results_pool[0]["chunk_candidates_returned"] == 15
+    assert results_pool[0]["distinct_papers_returned"] == 12
+    assert results_pool[0]["cutoff_coverage"]["k_10"] is True
+
+
+def test_evaluator_handles_explicit_negatives_and_macro_denominator():
+    rows = [
+        annotated(id="Q001", judged_nonrelevant_papers=["neg.pdf"]),
+        annotated(id="Q002", question="Different question?",
+                  relevant_evidence=[{"source_filename": "paper.pdf", "page": 1,
+                                      "supporting_quote": "q", "relevance_grade": 2}])
+    ]
+
+    def mock_retriever(question, n_results):
+        if question == rows[0]["question"]:
+            metas = [{"source": "neg.pdf", "chunk_id": "1"},
+                     {"source": "paper.pdf", "chunk_id": "2"},
+                     {"source": "unjudged.pdf", "chunk_id": "3"}]
+        else:
+            metas = [{"source": "unjudged.pdf", "chunk_id": "1"},
+                     {"source": "paper.pdf", "chunk_id": "2"}]
+        return {"metadatas": [metas]}
+
+    _, results, summary = evaluate_dataset(rows, "hash", retriever=mock_retriever)
+    assert results[0]["status"] == "scored"
+    assert results[1]["status"] == "scored"
+    assert results[0]["metrics"]["p@1"] == 0
+    assert "p@1" not in results[1]["metrics"]
+    assert summary["metrics"]["p@1"] == {"mean": 0.0, "count": 1}
+    assert summary["metrics"]["mrr"]["count"] == 2

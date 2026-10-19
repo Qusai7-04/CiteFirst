@@ -13,21 +13,29 @@ from settings_config import load_settings
 
 ROOT = Path(__file__).resolve().parent
 CHUNK_CANDIDATE_LIMIT = 10
+DEFAULT_POOL_SIZE = 30
 
 
 def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_only=False,
-                     index_tag="unrecorded", code_commit="unknown", config_sha256="unrecorded"):
+                     index_tag="unrecorded", code_commit="unknown", config_sha256="unrecorded",
+                     protocol="within_first_ten_chunks", candidate_pool_size=DEFAULT_POOL_SIZE):
     if limit is not None and (type(limit) is not int or limit < 1):
         raise ValueError("--limit must be a positive integer")
+    if protocol not in ("within_first_ten_chunks", "document_pool_top_k"):
+        raise ValueError(f"Unknown protocol: {protocol}")
+    if candidate_pool_size is not None and (type(candidate_pool_size) is not int or candidate_pool_size < 1):
+        raise ValueError("--candidate-pool must be a positive integer")
     audit = audit_records(records)
     output, attempted = [], 0
+    fetch_n = CHUNK_CANDIDATE_LIMIT if protocol == "within_first_ten_chunks" else candidate_pool_size
     for record, row in zip(records, audit):
         result = {key: value for key, value in row.items()
                   if key not in ("evidence", "judged_nonrelevant_papers")}
         result.update(dataset_sha256=dataset_hash, index_tag=index_tag, code_commit=code_commit,
-                      config_sha256=config_sha256,
+                      config_sha256=config_sha256, protocol=protocol,
                       retrieved_papers=[], retrieved_chunks=[], metrics={}, error=None,
                       chunk_candidates_returned=0, distinct_papers_returned=0,
+                      cutoff_coverage={},
                       gold_evidence_refs=[
                           {"source_filename": item.get("source_filename"), "page": item.get("page")}
                           for item in row["evidence"] if isinstance(item, dict)])
@@ -44,10 +52,11 @@ def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_on
                     if retriever is None:
                         from database import search_vault
                         retriever = search_vault
-                    raw = retriever(record["question"], n_results=CHUNK_CANDIDATE_LIMIT)
-                    # shortcut: score only the first ten returned chunks; increase the
-                    # candidate window before claiming top-ten coverage of unique papers.
-                    metas = raw["metadatas"][0][:CHUNK_CANDIDATE_LIMIT]
+                    raw = retriever(record["question"], n_results=fetch_n)
+                    # shortcut: in within_first_ten_chunks mode, score only the first ten returned chunks;
+                    # document_pool_top_k uses the pre-specified candidate pool before deduplication.
+                    raw_metas = raw["metadatas"][0] if raw and "metadatas" in raw and raw["metadatas"] else []
+                    metas = raw_metas[:CHUNK_CANDIDATE_LIMIT] if protocol == "within_first_ten_chunks" else raw_metas
                     if not all(isinstance(meta, dict) and meta.get("source") for meta in metas):
                         raise ValueError("missing_source_metadata")
                     result["retrieved_chunks"] = [
@@ -57,9 +66,12 @@ def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_on
                                   if type(meta.get("page_index")) is int else None),
                          "score": None}
                         for rank, meta in enumerate(metas, 1)]
-                    ranked = list(dict.fromkeys(meta["source"] for meta in metas))[:CHUNK_CANDIDATE_LIMIT]
+                    ranked = list(dict.fromkeys(meta["source"] for meta in metas))
+                    if protocol == "within_first_ten_chunks":
+                        ranked = ranked[:CHUNK_CANDIDATE_LIMIT]
                     result["chunk_candidates_returned"] = len(metas)
                     result["distinct_papers_returned"] = len(ranked)
+                    result["cutoff_coverage"] = {f"k_{k}": len(ranked) >= k for k in KS}
                     result["retrieved_papers"] = [
                         {"rank": rank, "source_filename": name, "score": None}
                         for rank, name in enumerate(ranked, 1)]
@@ -78,12 +90,17 @@ def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_on
                     result["error"] = f"{type(exc).__name__}: {exc}"
         output.append(result)
     counts = Counter(row["status"] for row in output)
+    scored_rows = [row for row in output if row["status"] == "scored"]
     summary = {
         "dataset_sha256": dataset_hash, "index_tag": index_tag, "code_commit": code_commit,
         "config_sha256": config_sha256,
         "config": {"retrieval": "database.search_vault",
-                   "chunk_candidate_limit": CHUNK_CANDIDATE_LIMIT,
-                   "paper_ranking": "first occurrence among top ten returned chunks",
+                   "protocol": protocol,
+                   "candidate_pool_size": fetch_n,
+                   "chunk_candidate_limit": CHUNK_CANDIDATE_LIMIT if protocol == "within_first_ten_chunks" else fetch_n,
+                   "paper_ranking": ("first occurrence among top ten returned chunks"
+                                     if protocol == "within_first_ten_chunks"
+                                     else f"first occurrence within candidate pool of {fetch_n} chunks"),
                    "k": list(KS), "limit": limit, "level": "source_filename",
                    "mode": "hybrid_pre_crag_no_llm"},
         "counts": {"present": len(records), "valid": sum(r["status"] != "invalid" for r in audit),
@@ -92,8 +109,12 @@ def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_on
                    "excluded": sum(r["status"] in ("invalid", "needs_human_review") for r in audit),
                    "attempted": attempted, "scored": counts["scored"],
                    "failed": counts["failed"], "skipped": counts["skipped_limit"] +
-                   counts["skipped_unanswerable"] + counts["skipped_audit_only"]},
-        "metrics": macro_average(row["metrics"] for row in output if row["status"] == "scored"),
+                   counts["skipped_unanswerable"] + counts["skipped_audit_only"],
+                   "cutoff_coverage": {
+                       f"k_{k}": sum(r["cutoff_coverage"].get(f"k_{k}", False) for r in scored_rows)
+                       for k in KS
+                   }},
+        "metrics": macro_average(row["metrics"] for row in scored_rows),
         "baseline_status": ("not_run_audit_only" if audit_only else
                             "blocked_no_verified_labels" if not any(
                                 r["status"] == "eligible_retrieval" for r in audit) else
@@ -125,13 +146,18 @@ def write_reports(output_dir, audit, results, summary):
     lines = [
         "# Retrieval evaluation", "",
         f"Status: **{summary['baseline_status']}**; document-level hybrid search before CRAG.",
+        f"Protocol: **{summary['config']['protocol']}**; candidate chunk limit: {summary['config']['chunk_candidate_limit']}.",
         f"Dataset SHA-256: {summary['dataset_sha256']}; index tag: {summary['index_tag']}; "
         f"code commit: {summary['code_commit']}.", "",
-        "Counts: " + ", ".join(f"{key}={value}" for key, value in summary["counts"].items()) + ".",
+        "Counts: " + ", ".join(f"{key}={value}" for key, value in summary["counts"].items()
+                               if key != "cutoff_coverage") + ".",
+        f"Cutoff coverage (queries reaching >= K distinct papers): {json.dumps(summary['counts']['cutoff_coverage'])}.",
         f"Config: {json.dumps(summary['config'], sort_keys=True)}", "",
-        "Paper ranks are first occurrences within the top ten returned chunks. "
-        "Fewer than K distinct papers are padded as misses; this is not a search "
-        "over the top K unique papers.", "",
+        ("Paper ranks are first occurrences within the top ten returned chunks. "
+         "Fewer than K distinct papers are padded as misses; this is not a search "
+         "over the top K unique papers." if summary['config']['protocol'] == "within_first_ten_chunks"
+         else f"Paper ranks are first occurrences within candidate pool of {summary['config']['candidate_pool_size']} chunks. "
+              "Distinct papers are ranked in first-occurrence order."), "",
         "Macro means across scored answerable queries (missing ranks count as non-relevant):", "",
     ]
     if summary["metrics"]:
@@ -147,7 +173,8 @@ def write_reports(output_dir, audit, results, summary):
 
 def run_ml_evaluation(dataset=ROOT / "golden_dataset.json",
                       output_dir=ROOT / "evaluation_results", limit=None,
-                      audit_only=False, index_tag=None, code_commit=None):
+                      audit_only=False, index_tag=None, code_commit=None,
+                      protocol="within_first_ten_chunks", candidate_pool_size=DEFAULT_POOL_SIZE):
     records, digest = load_dataset(dataset)
     if (not audit_only and any(row["status"] == "eligible_retrieval"
                            for row in audit_records(records)) and
@@ -163,7 +190,8 @@ def run_ml_evaluation(dataset=ROOT / "golden_dataset.json",
         json.dumps(settings, sort_keys=True).encode("utf-8")).hexdigest()
     audit, rows, summary = evaluate_dataset(
         records, digest, limit=limit, audit_only=audit_only,
-        index_tag=index_tag, code_commit=code_commit, config_sha256=config_sha256)
+        index_tag=index_tag, code_commit=code_commit, config_sha256=config_sha256,
+        protocol=protocol, candidate_pool_size=candidate_pool_size)
     write_reports(output_dir, audit, rows, summary)
     return summary
 
@@ -176,5 +204,11 @@ if __name__ == "__main__":
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--index-tag", help="Required for a scored retrieval run; identify the fixed local index")
     parser.add_argument("--code-commit")
+    parser.add_argument("--protocol", choices=["within_first_ten_chunks", "document_pool_top_k"],
+                        default="within_first_ten_chunks",
+                        help="Retrieval evaluation protocol")
+    parser.add_argument("--candidate-pool", dest="candidate_pool_size", type=int,
+                        default=DEFAULT_POOL_SIZE,
+                        help="Candidate chunk pool size for document_pool_top_k protocol")
     args = parser.parse_args()
     print(json.dumps(run_ml_evaluation(**vars(args)), indent=2))

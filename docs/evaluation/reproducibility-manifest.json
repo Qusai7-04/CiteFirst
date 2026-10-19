@@ -1,0 +1,69 @@
+{
+  "manifest_version": "1.0.0",
+  "date_created": "2026-10-19T17:58:44.805198Z",
+  "code_commit": "f1244db78bd720b642ba4ea68662e11cb535e2ee",
+  "authoritative_golden_dataset": {
+    "path": "golden_dataset.json",
+    "records": 18,
+    "sha256": "5ee6866f05beba02edbe04321543d5a6aa9d30dbfaba0fecc219d9c6328754ab"
+  },
+  "reviewed_draft_dataset": {
+    "path": "reviewed_dataset.draft.json",
+    "records": 18,
+    "sha256": "a8234afb27e37dc9eb6354a5f8cc00f0db78d184cea7950c584df2ba94cacfbd"
+  },
+  "corpus_manifest": {
+    "directory": "papers",
+    "pdf_count": 66,
+    "sorted_manifest_sha256": "4035c42aeb626527ef714fd3105fdab3157a095bae64f782d84add65558e2583"
+  },
+  "vector_index": {
+    "location": "./vector_vault",
+    "collections": {
+      "ieee_papers": 0,
+      "ieee_papers_parent": 0
+    },
+    "status": "empty_zero_chunks",
+    "derived_index_tag": "vault-sha256-4035c42aeb62"
+  },
+  "embedding_configuration": {
+    "model_identifier": "BAAI/bge-small-en-v1.5",
+    "dimensions": 384,
+    "child_chunk_words": 100,
+    "child_overlap_words": 20,
+    "parent_chunk_words": 350,
+    "parent_overlap_words": 75,
+    "query_prefix": "Represent this sentence for searching relevant passages: "
+  },
+  "retrieval_configuration": {
+    "settings": {
+      "FETCH_K": 30,
+      "PROCESS_K": 10,
+      "CHUNK_WORD_LIMIT": 300,
+      "CORRECT_THRESHOLD": 0.55,
+      "AMBIGUOUS_THRESHOLD": 0.25,
+      "BENDY_THRESHOLD": 0.1,
+      "MAX_VERIFIED_CHUNKS": 2,
+      "SOFTMAX_MASS_CUTOFF": 0.9,
+      "DISTANCE_THRESHOLD": 0.7,
+      "TOTAL_DOCS": 60
+    },
+    "config_sha256": "da7f4b49f6b70b3482753755dbc0cea1984c75ca757bdfb3810fcb9c10f4aeae",
+    "bm25_available": true,
+    "bm25_cached": false
+  },
+  "fingerprinting_limits": {
+    "automatically_fingerprinted": [
+      "repository code git commit",
+      "dataset file bytes (SHA-256)",
+      "corpus PDF file bytes and sorted manifest (SHA-256)",
+      "retrieval configuration dictionary (SHA-256)",
+      "Chroma collection names and record counts"
+    ],
+    "not_automatically_fingerprinted": [
+      "HuggingFace model weight binaries (retrieved dynamically or cached locally without cryptographic pin)",
+      "Chroma SQLite internal B-tree file structure (varies with SQLite page allocations even for identical embeddings)"
+    ],
+    "index_integrity_note": "A meaningful index tag derived from the sorted corpus manifest (e.g. vault-sha256-4035c42aeb62) cryptographically binds the index to the exact PDF files, but a manually typed string alone does not verify index content."
+  }
+}

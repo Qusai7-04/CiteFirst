@@ -1,0 +1,21 @@
+{
+  "diagnostic_description": "Label-free diagnostic over 18 candidate questions before relevance scoring",
+  "index_location": "./vector_vault",
+  "index_state": "empty_zero_chunks",
+  "total_queries": 18,
+  "summary": {
+    "total_chunks_returned": 0,
+    "total_distinct_sources_returned": 0,
+    "coverage_support": {
+      "k_1": "0/18",
+      "k_3": "0/18",
+      "k_5": "0/18",
+      "k_10": "0/18"
+    },
+    "diagnosis": "The local vector vault (Chroma collections 'ieee_papers' and 'ieee_papers_parent') exists on disk but contains 0 chunks. All 18 candidate queries return 0 chunks from search_vault."
+  },
+  "remediation_steps": [
+    "Run 'python database.py' to ingest and chunk all 66 PDFs from 'papers/' directory into './vector_vault'.",
+    "Once ingested, re-run 'python evaluator.py --dataset reviewed_dataset.json --index-tag <actual-tag> --protocol within_first_ten_chunks' to compute live retrieval scores."
+  ]
+}

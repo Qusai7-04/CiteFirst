@@ -132,31 +132,47 @@ def test_document_pool_protocol_differs_from_ten_chunks():
     rows = [annotated()]
     calls = []
 
-    def pool_retriever(question, n_results):
+    def mock_large_vault(question, n_results):
         calls.append(n_results)
-        # 15 chunks from 12 distinct papers
-        metas = ([{"source": f"paper_{i}.pdf", "chunk_id": f"c{i}"} for i in range(12)] +
-                 [{"source": "paper_0.pdf", "chunk_id": "c12"},
-                  {"source": "paper_1.pdf", "chunk_id": "c13"},
-                  {"source": "paper_2.pdf", "chunk_id": "c14"}])
+        # Simulate search_vault returning n_results * 3 chunks (e.g. 90 chunks for n_results=30)
+        # where only 4 distinct papers appear across the chunks
+        raw_count = n_results * 3
+        metas = [{"source": f"paper_{i % 4}.pdf", "chunk_id": f"c{i}"} for i in range(raw_count)]
         return {"metadatas": [metas]}
 
+    # 1. Default ten-chunk protocol: requests 10, slices to 10 chunks, scores all cutoffs (padding missing as misses)
     _, results_default, summary_default = evaluate_dataset(
-        rows, "hash", retriever=pool_retriever, protocol="within_first_ten_chunks")
+        rows, "hash", retriever=mock_large_vault, protocol="within_first_ten_chunks")
     assert calls[-1] == 10
     assert summary_default["config"]["protocol"] == "within_first_ten_chunks"
     assert summary_default["config"]["chunk_candidate_limit"] == 10
     assert results_default[0]["chunk_candidates_returned"] == 10
-    assert results_default[0]["distinct_papers_returned"] == 10
+    assert results_default[0]["distinct_papers_returned"] == 4
+    # In ten-chunk mode, missing ranks are padded as misses, so p@10 and r@10 are present
+    assert "r@10" in results_default[0]["metrics"]
+    assert results_default[0]["unavailable_cutoffs"] == {}
 
+    # 2. Document-pool protocol: requests 30, strictly slices 90 chunks down to stated 30-chunk pool
     _, results_pool, summary_pool = evaluate_dataset(
-        rows, "hash", retriever=pool_retriever, protocol="document_pool_top_k", candidate_pool_size=20)
-    assert calls[-1] == 20
+        rows, "hash", retriever=mock_large_vault, protocol="document_pool_top_k", candidate_pool_size=30)
+    assert calls[-1] == 30
     assert summary_pool["config"]["protocol"] == "document_pool_top_k"
-    assert summary_pool["config"]["candidate_pool_size"] == 20
-    assert results_pool[0]["chunk_candidates_returned"] == 15
-    assert results_pool[0]["distinct_papers_returned"] == 12
-    assert results_pool[0]["cutoff_coverage"]["k_10"] is True
+    assert summary_pool["config"]["candidate_pool_size"] == 30
+    # Must enforce stated 30-chunk pool, NOT consume all 90 chunks
+    assert results_pool[0]["chunk_candidates_returned"] == 30
+    assert results_pool[0]["distinct_papers_returned"] == 4
+    # Because only 4 distinct papers were retrieved, K=5 and K=10 are unavailable
+    assert "r@1" in results_pool[0]["metrics"]
+    assert "r@3" in results_pool[0]["metrics"]
+    assert "r@5" not in results_pool[0]["metrics"]
+    assert "r@10" not in results_pool[0]["metrics"]
+    assert "p@10" not in results_pool[0]["metrics"]
+    assert "k_5" in results_pool[0]["unavailable_cutoffs"]
+    assert "k_10" in results_pool[0]["unavailable_cutoffs"]
+    assert summary_pool["counts"]["unavailable_cutoffs"] == {
+        "k_1": 0, "k_3": 0, "k_5": 1, "k_10": 1
+    }
+
 
 
 def test_evaluator_handles_explicit_negatives_and_macro_denominator():

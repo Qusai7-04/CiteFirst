@@ -1,21 +1,356 @@
 {
-  "diagnostic_description": "Label-free diagnostic over 18 candidate questions before relevance scoring",
-  "index_location": "./vector_vault",
-  "index_state": "empty_zero_chunks",
-  "total_queries": 18,
-  "summary": {
-    "total_chunks_returned": 0,
-    "total_distinct_sources_returned": 0,
-    "coverage_support": {
-      "k_1": "0/18",
-      "k_3": "0/18",
-      "k_5": "0/18",
-      "k_10": "0/18"
-    },
-    "diagnosis": "The local vector vault (Chroma collections 'ieee_papers' and 'ieee_papers_parent') exists on disk but contains 0 chunks. All 18 candidate queries return 0 chunks from search_vault."
+  "index_location": "C:\\PROJECTS\\CiteFirst\\vector_vault_eval",
+  "pdf_count": 66,
+  "indexed_sources_count": 66,
+  "child_chunks_count": 7816,
+  "parent_chunks_count": 2418,
+  "total_ingestion_time_seconds": 3539.93,
+  "ingestion_errors": [],
+  "diagnostic_query_count": 18,
+  "coverage_summary": {
+    "k_1": "18/18",
+    "k_3": "3/18",
+    "k_5": "1/18",
+    "k_10": "0/18"
   },
-  "remediation_steps": [
-    "Run 'python database.py' to ingest and chunk all 66 PDFs from 'papers/' directory into './vector_vault'.",
-    "Once ingested, re-run 'python evaluator.py --dataset reviewed_dataset.json --index-tag <actual-tag> --protocol within_first_ten_chunks' to compute live retrieval scores."
+  "per_query_diagnostics": [
+    {
+      "id": "Q001",
+      "question": "Based on the text, deduce the logical reasoning that connects the experimental o...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "rsta.1895.0004.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "rsta.1895.0004.pdf"
+      ]
+    },
+    {
+      "id": "Q002",
+      "question": "Analyze how the principles from Rawls and Habermas, when applied to rule-making,...",
+      "chunks_returned": 10,
+      "distinct_sources": 3,
+      "duplicates_per_source": {
+        "An_Experimentalist_Approach_to_Ethical_Governance_of_Emerging_Technologies.pdf": 8
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": true,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "An_Experimentalist_Approach_to_Ethical_Governance_of_Emerging_Technologies.pdf",
+        "From_Ethics_Washing_to_Ethics_Bashing_A_Moral_Philosophy_View_on_Tech_Ethics.pdf",
+        "1294261.1294281.pdf"
+      ]
+    },
+    {
+      "id": "Q003",
+      "question": "Given that the Moon-based platform has different observation angular characteris...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "Comparisons_of_Observational_Angles_Between_Moon-Based_Platform_and_Artificial_Satellites.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "Comparisons_of_Observational_Angles_Between_Moon-Based_Platform_and_Artificial_Satellites.pdf"
+      ]
+    },
+    {
+      "id": "Q004",
+      "question": "Why do retrievals based on visible (VIS) and near-infrared (NIR) observations al...",
+      "chunks_returned": 10,
+      "distinct_sources": 2,
+      "duplicates_per_source": {
+        "2603.25694v1.pdf": 9
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "2603.25694v1.pdf",
+        "2603.25421v1.pdf"
+      ]
+    },
+    {
+      "id": "Q005",
+      "question": "How does employing moral philosophy as a methodological framework address the te...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "From_Ethics_Washing_to_Ethics_Bashing_A_Moral_Philosophy_View_on_Tech_Ethics.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "From_Ethics_Washing_to_Ethics_Bashing_A_Moral_Philosophy_View_on_Tech_Ethics.pdf"
+      ]
+    },
+    {
+      "id": "Q006",
+      "question": "How do the theoretical models of black hole shadows described in Chan et al. (20...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "Akiyama_2019_ApJL_875_L1.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "Akiyama_2019_ApJL_875_L1.pdf"
+      ]
+    },
+    {
+      "id": "Q007",
+      "question": "Explain how the combination of DES data with the baseline Planck likelihood impa...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "1807.06209v4.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "1807.06209v4.pdf"
+      ]
+    },
+    {
+      "id": "Q008",
+      "question": "Given the data in Figures 3 and 4, what logical inference explains the dominance...",
+      "chunks_returned": 10,
+      "distinct_sources": 2,
+      "duplicates_per_source": {
+        "Experiencing_Immersive_Virtual_Nature_for_Well-Being_Restoration_Performance_and_Nature_Connectedness_A_Scoping_Review.pdf": 9
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "Real-time_Emotion_Recognition_and_Expression_for_Avatar-Mediated_Mental_Health_Counseling_Improving_Nonverbal_Communication_and_Emotional_Response.pdf",
+        "Experiencing_Immersive_Virtual_Nature_for_Well-Being_Restoration_Performance_and_Nature_Connectedness_A_Scoping_Review.pdf"
+      ]
+    },
+    {
+      "id": "Q009",
+      "question": "How does the methodological shift from theoretical to experimental approaches in...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "Exploration_on_Experimental_Economics_and_the_Education_Reform_of_New_Finance_and_Economics.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "Exploration_on_Experimental_Economics_and_the_Education_Reform_of_New_Finance_and_Economics.pdf"
+      ]
+    },
+    {
+      "id": "Q010",
+      "question": "Why does Amazon advocate for using the 99.9th percentile in SLAs instead of mean...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "1294261.1294281.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "1294261.1294281.pdf"
+      ]
+    },
+    {
+      "id": "Q011",
+      "question": "How do the studies by Bonnet and Dick (1997) on acute myeloid leukemia and Boiko...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "PIIS0092867411001279.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "PIIS0092867411001279.pdf"
+      ]
+    },
+    {
+      "id": "Q012",
+      "question": "Given that a galaxy traveling at 1000 km/s would only traverse approximately 30 ...",
+      "chunks_returned": 10,
+      "distinct_sources": 3,
+      "duplicates_per_source": {
+        "Structural_formation_of_the_universe_As_observed_by_X-ray_satellites.pdf": 7,
+        "1807.06209v4.pdf": 2
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": true,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "Structural_formation_of_the_universe_As_observed_by_X-ray_satellites.pdf",
+        "1807.06209v4.pdf",
+        "rsta.1895.0004.pdf"
+      ]
+    },
+    {
+      "id": "Q013",
+      "question": "How do phenotypic plasticity and the debated classification of CSCs as a distinc...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "PIIS0092867411001279.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "PIIS0092867411001279.pdf"
+      ]
+    },
+    {
+      "id": "Q014",
+      "question": "Given the challenges in cultivating students' creative ability in dance consciou...",
+      "chunks_returned": 10,
+      "distinct_sources": 2,
+      "duplicates_per_source": {
+        "Dance_Guiding_Art_Innovation_Framework_Based_on_Video_Action_Recognition_Technology.pdf": 8,
+        "A_Paradigm_for_Teaching_Math_and_Computer_Science_Concepts_in_K-12_Learning_Environment_by_Integrating_Coding_Animation_Dance_Music_and_Art.pdf": 2
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "Dance_Guiding_Art_Innovation_Framework_Based_on_Video_Action_Recognition_Technology.pdf",
+        "A_Paradigm_for_Teaching_Math_and_Computer_Science_Concepts_in_K-12_Learning_Environment_by_Integrating_Coding_Animation_Dance_Music_and_Art.pdf"
+      ]
+    },
+    {
+      "id": "Q015",
+      "question": "Why did the researchers opt to perform Maximum Inner Product Search (MIPS) with ...",
+      "chunks_returned": 10,
+      "distinct_sources": 6,
+      "duplicates_per_source": {
+        "2005.11401v4.pdf": 3,
+        "2002.08909v1.pdf": 3
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": true,
+        "k_5": true,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "2005.11401v4.pdf",
+        "AMA_AdaptiveMemoryviaMultiAgentCollaboration_compressed.pdf",
+        "2002.08909v1.pdf",
+        "2310.11511v1.pdf",
+        "1706.03762v7.pdf"
+      ]
+    },
+    {
+      "id": "Q016",
+      "question": "Given the experimental conditions described for CCMV and HAV, why does the analy...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "On_the_Response_of_Nanoelectrode_Impedance_Spectroscopy_Measures_to_Plant_Animal_and_Human_Viruses.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "On_the_Response_of_Nanoelectrode_Impedance_Spectroscopy_Measures_to_Plant_Animal_and_Human_Viruses.pdf"
+      ]
+    },
+    {
+      "id": "Q017",
+      "question": "Considering the studies on electrostatic interactions in viruses [46], effective...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "On_the_Response_of_Nanoelectrode_Impedance_Spectroscopy_Measures_to_Plant_Animal_and_Human_Viruses.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "On_the_Response_of_Nanoelectrode_Impedance_Spectroscopy_Measures_to_Plant_Animal_and_Human_Viruses.pdf"
+      ]
+    },
+    {
+      "id": "Q018",
+      "question": "How does the author argue that the properties governing heat-motions necessitate...",
+      "chunks_returned": 10,
+      "distinct_sources": 1,
+      "duplicates_per_source": {
+        "rsta.1895.0004.pdf": 10
+      },
+      "cutoff_coverage": {
+        "k_1": true,
+        "k_3": false,
+        "k_5": false,
+        "k_10": false
+      },
+      "top_distinct_papers": [
+        "rsta.1895.0004.pdf"
+      ]
+    }
   ]
 }

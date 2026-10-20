@@ -1,7 +1,7 @@
 {
-  "manifest_version": "1.0.0",
-  "date_created": "2026-10-19T17:58:44.805198Z",
-  "code_commit": "f1244db78bd720b642ba4ea68662e11cb535e2ee",
+  "manifest_version": "1.1.0",
+  "date_created": "2026-10-19T19:18:27.453426Z",
+  "code_commit": "50e182c4197f3eeb3f1203942424683c2cd7c60b",
   "authoritative_golden_dataset": {
     "path": "golden_dataset.json",
     "records": 18,
@@ -10,7 +10,12 @@
   "reviewed_draft_dataset": {
     "path": "reviewed_dataset.draft.json",
     "records": 18,
-    "sha256": "a8234afb27e37dc9eb6354a5f8cc00f0db78d184cea7950c584df2ba94cacfbd"
+    "sha256": "38ce02f9c14ca29505ea55196063f061ad5842ab550c44e0a4199e27c1b2fbff"
+  },
+  "reviewed_dataset": {
+    "path": "reviewed_dataset.json",
+    "records": 18,
+    "sha256": "395b11567576562e5528c52801f0c8da79f86cbd66fc8e7ec0e1dad8ea847487"
   },
   "corpus_manifest": {
     "directory": "papers",
@@ -18,13 +23,25 @@
     "sorted_manifest_sha256": "4035c42aeb626527ef714fd3105fdab3157a095bae64f782d84add65558e2583"
   },
   "vector_index": {
-    "location": "./vector_vault",
-    "collections": {
-      "ieee_papers": 0,
-      "ieee_papers_parent": 0
+    "evaluation_index": {
+      "location": "./vector_vault_eval",
+      "status": "populated",
+      "collections": {
+        "ieee_papers": 7816,
+        "ieee_papers_parent": 2418
+      },
+      "derived_index_tag": "vault-eval-c7816-p2418-sha256-4035c42aeb62",
+      "bm25_cached": true,
+      "bm25_corpus_sha256": "974089122253ea1eddcd4afca224aa6f5a15487be8f4f13f0ba478e2d90c6846"
     },
-    "status": "empty_zero_chunks",
-    "derived_index_tag": "vault-sha256-4035c42aeb62"
+    "preserved_default_vault": {
+      "location": "./vector_vault",
+      "status": "preserved_empty_zero_chunks",
+      "collections": {
+        "ieee_papers": 0,
+        "ieee_papers_parent": 0
+      }
+    }
   },
   "embedding_configuration": {
     "model_identifier": "BAAI/bge-small-en-v1.5",
@@ -50,20 +67,21 @@
     },
     "config_sha256": "da7f4b49f6b70b3482753755dbc0cea1984c75ca757bdfb3810fcb9c10f4aeae",
     "bm25_available": true,
-    "bm25_cached": false
+    "bm25_cached": true
   },
   "fingerprinting_limits": {
     "automatically_fingerprinted": [
-      "repository code git commit",
-      "dataset file bytes (SHA-256)",
-      "corpus PDF file bytes and sorted manifest (SHA-256)",
+      "repository code git commit SHA",
+      "evaluation and golden dataset file contents (SHA-256)",
+      "corpus PDF file contents and sorted manifest (SHA-256)",
+      "BM25 tokenized corpus cache (SHA-256)",
       "retrieval configuration dictionary (SHA-256)",
-      "Chroma collection names and record counts"
+      "Chroma collection names and exact record counts"
     ],
     "not_automatically_fingerprinted": [
-      "HuggingFace model weight binaries (retrieved dynamically or cached locally without cryptographic pin)",
-      "Chroma SQLite internal B-tree file structure (varies with SQLite page allocations even for identical embeddings)"
+      "HuggingFace model weight binaries (downloaded dynamically or cached locally without cryptographic pin)",
+      "Chroma SQLite internal B-tree file structure (varies with SQLite page allocations, journal modes, and timestamps across platforms)"
     ],
-    "index_integrity_note": "A meaningful index tag derived from the sorted corpus manifest (e.g. vault-sha256-4035c42aeb62) cryptographically binds the index to the exact PDF files, but a manually typed string alone does not verify index content."
+    "cryptographic_boundaries_note": "A tag hashing only the PDF files (e.g. vault-sha256-4035c42aeb62) cryptographically proves the raw input corpus, but does not confirm that the vector vault has been populated or verify its contents. Raw SQLite .sqlite3 files cannot be uniquely fingerprinted by cryptographic hash because SQLite binary layouts contain volatile transaction headers, allocation free-lists, and platform-dependent timestamps. Reproducibility is therefore established by cryptographically binding: (1) corpus PDF manifest SHA-256, (2) deterministic chunking and collection record counts, (3) BM25 corpus cache SHA-256, (4) retrieval config SHA-256, and (5) code commit."
   }
 }

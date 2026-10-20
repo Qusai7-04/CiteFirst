@@ -56,7 +56,10 @@ def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_on
                     # shortcut: in within_first_ten_chunks mode, score only the first ten returned chunks;
                     # document_pool_top_k uses the pre-specified candidate pool before deduplication.
                     raw_metas = raw["metadatas"][0] if raw and "metadatas" in raw and raw["metadatas"] else []
-                    metas = raw_metas[:CHUNK_CANDIDATE_LIMIT] if protocol == "within_first_ten_chunks" else raw_metas
+                    if protocol == "within_first_ten_chunks":
+                        metas = raw_metas[:CHUNK_CANDIDATE_LIMIT]
+                    else:
+                        metas = raw_metas[:candidate_pool_size]
                     if not all(isinstance(meta, dict) and meta.get("source") for meta in metas):
                         raise ValueError("missing_source_metadata")
                     result["retrieved_chunks"] = [
@@ -82,8 +85,24 @@ def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_on
                             name = item["source_filename"]
                             grades[name] = max(grades.get(name, 0), item["relevance_grade"])
                     judged = set(row["gold_papers"]) | set(row["judged_nonrelevant_papers"])
-                    result["metrics"] = score_ranking(
-                        ranked, row["gold_papers"], grades=grades, judged_ids=judged)
+                    if protocol == "within_first_ten_chunks":
+                        result["metrics"] = score_ranking(
+                            ranked, row["gold_papers"], grades=grades, judged_ids=judged)
+                        result["unavailable_cutoffs"] = {}
+                    else:
+                        available_ks = tuple(k for k in KS if len(ranked) >= k)
+                        unavailable_ks = [k for k in KS if len(ranked) < k]
+                        if available_ks:
+                            result["metrics"] = score_ranking(
+                                ranked, row["gold_papers"], k_values=available_ks,
+                                grades=grades, judged_ids=judged)
+                        else:
+                            first = next((i for i, item in enumerate(ranked, 1) if item in set(row["gold_papers"])), None)
+                            result["metrics"] = {"mrr": 1 / first if first else 0.0}
+                        result["unavailable_cutoffs"] = {
+                            f"k_{k}": f"pool_cap_insufficient_distinct_papers ({len(ranked)} < {k})"
+                            for k in unavailable_ks
+                        }
                     result["status"] = "scored"
                 except Exception as exc:
                     result["status"] = "failed"
@@ -112,6 +131,10 @@ def evaluate_dataset(records, dataset_hash, retriever=None, limit=None, audit_on
                    counts["skipped_unanswerable"] + counts["skipped_audit_only"],
                    "cutoff_coverage": {
                        f"k_{k}": sum(r["cutoff_coverage"].get(f"k_{k}", False) for r in scored_rows)
+                       for k in KS
+                   },
+                   "unavailable_cutoffs": {
+                       f"k_{k}": sum(f"k_{k}" in r.get("unavailable_cutoffs", {}) for r in scored_rows)
                        for k in KS
                    }},
         "metrics": macro_average(row["metrics"] for row in scored_rows),
@@ -150,16 +173,18 @@ def write_reports(output_dir, audit, results, summary):
         f"Dataset SHA-256: {summary['dataset_sha256']}; index tag: {summary['index_tag']}; "
         f"code commit: {summary['code_commit']}.", "",
         "Counts: " + ", ".join(f"{key}={value}" for key, value in summary["counts"].items()
-                               if key != "cutoff_coverage") + ".",
+                               if key not in ("cutoff_coverage", "unavailable_cutoffs")) + ".",
         f"Cutoff coverage (queries reaching >= K distinct papers): {json.dumps(summary['counts']['cutoff_coverage'])}.",
+        f"Unavailable cutoffs due to pool cap: {json.dumps(summary['counts']['unavailable_cutoffs'])}.",
         f"Config: {json.dumps(summary['config'], sort_keys=True)}", "",
         ("Paper ranks are first occurrences within the top ten returned chunks. "
          "Fewer than K distinct papers are padded as misses; this is not a search "
          "over the top K unique papers." if summary['config']['protocol'] == "within_first_ten_chunks"
          else f"Paper ranks are first occurrences within candidate pool of {summary['config']['candidate_pool_size']} chunks. "
-              "Distinct papers are ranked in first-occurrence order."), "",
+              "For cutoffs K where fewer than K distinct papers were retrieved in the pool, document@K metrics are reported as unavailable."), "",
         "Macro means across scored answerable queries (missing ranks count as non-relevant):", "",
     ]
+
     if summary["metrics"]:
         lines += ["| Metric | Mean | N |", "|---|---:|---:|"]
         lines += [f"| {key} | {value['mean']:.4f} | {value['count']} |"

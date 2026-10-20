@@ -6,7 +6,14 @@ type Summary = {
   baseline_status: string;
   dataset_sha256: string;
   index_tag: string | null;
-  counts: Record<string, number>;
+  counts: {
+    present?: number;
+    eligible_retrieval?: number;
+    scored?: number;
+    failed?: number;
+    excluded?: number;
+    unavailable_cutoffs?: Record<string, number>;
+  };
   metrics: Record<string, Metric>;
   config: { mode: string; limit: number | null; chunk_candidate_limit: number };
 };
@@ -15,7 +22,7 @@ const statusLabels: Record<string, string> = {
   blocked_no_verified_labels: "Baseline blocked: annotate evidence first",
   retrieval_failed: "Retrieval failed: check the local index and model",
   partial_results: "Partial results: some retrieval queries failed",
-  pilot_only: "Annotated pilot results",
+  pilot_only: "Pilot retrieval measurement (18-query pilot; non-definitive)",
   not_run_audit_only: "Dataset audit only",
 };
 
@@ -54,6 +61,15 @@ export default function AnalyticsDashboard() {
             Paper ranks are the first distinct sources among the top {data.config?.chunk_candidate_limit ?? 10} returned chunks.
             Fewer than K papers count as missing ranks. Index: {data.index_tag ?? "not recorded"}.
           </p>
+          {data.counts?.unavailable_cutoffs && Object.values(data.counts.unavailable_cutoffs).some((v) => v > 0) && (
+            <p style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 13 }}>
+              Unavailable cutoffs (insufficient distinct papers):{" "}
+              {Object.entries(data.counts.unavailable_cutoffs)
+                .filter(([, count]) => count > 0)
+                .map(([k, count]) => `${k} (${count} queries unavailable)`)
+                .join(", ")}
+            </p>
+          )}
           {Object.keys(data.metrics ?? {}).length > 0 && (
             <table style={{ marginTop: 20, borderSpacing: 12, textAlign: "left" }}>
               <thead><tr><th>Metric</th><th>Macro mean</th><th>Queries</th></tr></thead>

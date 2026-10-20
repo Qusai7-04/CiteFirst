@@ -11,6 +11,7 @@ __pycache__/
 # ── Vector DB / Data ────────────────────────────────────
 chroma_db/
 vector_vault/
+vector_vault*/
 papers/
 *.pdf
 *.sqlite3
@@ -65,5 +66,11 @@ CLAUDE.md
 PHASE*_CLAUDE_PROMPT*
 CLAUDE_*PROMPT*
 GEMINI_*PROMPT*
+GEMINI_CITEFIRST_*
+*CHANGELOG_FOR_REVIEW*
+*REVIEW_FINDINGS*
+*REVIEW_WORKSHEET*
+CANDIDATE_REVIEW_WORKSHEET*
 *.zip
 _zip_review/
+scratch/

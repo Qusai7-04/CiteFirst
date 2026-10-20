@@ -16,7 +16,7 @@ The evaluation benchmarks the pre-CRAG hybrid retriever (`database.search_vault`
   * Record count: **18**
   * SHA-256: `395b11567576562e5528c52801f0c8da79f86cbd66fc8e7ec0e1dad8ea847487`
   * Status: 18 eligible retrieval, 0 abstention, 0 excluded.
-  * Human verification: 100% human-verified (`human_verified: true`, `reviewer: "Qusai (human review)"`, `review_date: "2026-10-20"`).
+  * Human verification & Provenance: 100% human-verified (`human_verified: true`, `reviewer: "Qusai (human review)"`, `review_date: "2026-10-20"`). The candidate answers and claim-support tables were drafted with AI assistance, then personally compared by the reviewer (Qusai) against the marked information in their cited physical research papers, with required corrections applied before approval. The scope of human verification covers the cited answers and evidence passages for these 18 questions; it did not establish that every other paper in the 66-PDF corpus is nonrelevant.
 * **Original Unmodified Dataset**: [`golden_dataset.json`](../../golden_dataset.json)
   * Preserved unchanged; SHA-256: `5ee6866f05beba02edbe04321543d5a6aa9d30dbfaba0fecc219d9c6328754ab`.
 * **Evaluation Index**: `./vector_vault_eval`

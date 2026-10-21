@@ -1,6 +1,33 @@
 """Shared fixtures and helpers for the CiteFirst test suite."""
 import os
+import sys
+from types import SimpleNamespace
 import pytest
+
+# Support offline/model-free test suites where production ML dependencies are not installed
+for _mod, _stub in [
+    ("dotenv", SimpleNamespace(load_dotenv=lambda *a, **k: None)),
+    ("fitz", SimpleNamespace(open=lambda *a, **k: SimpleNamespace())),
+    ("chromadb", SimpleNamespace(
+        PersistentClient=lambda *a, **k: SimpleNamespace(
+            get_or_create_collection=lambda **kw: SimpleNamespace(
+                count=lambda: 0,
+                query=lambda **kw: {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+            )
+        )
+    )),
+    ("sentence_transformers", SimpleNamespace(
+        SentenceTransformer=lambda *a, **k: object(),
+        CrossEncoder=lambda *a, **k: SimpleNamespace(
+            predict=lambda pairs, *a, **k: 2.0 if (len(pairs) == 2 and isinstance(pairs[0], str) and isinstance(pairs[1], str)) else __import__("numpy").array([2.0] * len(pairs))
+        )
+    ))
+]:
+    if _mod not in sys.modules:
+        try:
+            __import__(_mod)
+        except ImportError:
+            sys.modules[_mod] = _stub
 
 
 def _can_symlink(tmp: os.PathLike) -> bool:

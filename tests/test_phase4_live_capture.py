@@ -33,8 +33,29 @@ def test_generation_status_not_run_when_provider_not_called(tmp_path, monkeypatc
     monkeypatch.setenv("GEMINI_API_KEY", "dummy_test_key_not_real")
 
     target_out = tmp_path / "test_worksheet.json"
+    dummy_trace = tmp_path / "test_trace.json"
+    dummy_trace.write_text(json.dumps({
+        "records": [
+            {
+                "id": "Q001",
+                "actual_returned_count": 1,
+                "verified_chunks_count": 1,
+                "fallback_triggered": False,
+                "selected_generation_context": [
+                    {
+                        "source": "rsta.1895.0004.pdf",
+                        "page": 1,
+                        "chunk_id": "c1",
+                        "text": "Exact text from page 1"
+                    }
+                ]
+            }
+        ]
+    }), encoding="utf-8")
+
     import scripts.capture_generation_worksheet as cgw
     monkeypatch.setattr(cgw, "WORKSHEET_PATH", target_out)
+    monkeypatch.setattr(cgw, "TRACE_PATH", dummy_trace)
 
     cgw.capture_generation_worksheet(limit=1)
 
@@ -54,8 +75,29 @@ def test_generation_context_page_and_metadata_integrity(tmp_path, monkeypatch):
     source filenames, and exact passage strings without inventing metadata.
     """
     target_out = tmp_path / "test_worksheet.json"
+    dummy_trace = tmp_path / "test_trace.json"
+    dummy_trace.write_text(json.dumps({
+        "records": [
+            {
+                "id": "Q001",
+                "actual_returned_count": 1,
+                "verified_chunks_count": 1,
+                "fallback_triggered": False,
+                "selected_generation_context": [
+                    {
+                        "source": "rsta.1895.0004.pdf",
+                        "page": 1,
+                        "chunk_id": "c1",
+                        "text": "Exact text passed to generation for testing."
+                    }
+                ]
+            }
+        ]
+    }), encoding="utf-8")
+
     import scripts.capture_generation_worksheet as cgw
     monkeypatch.setattr(cgw, "WORKSHEET_PATH", target_out)
+    monkeypatch.setattr(cgw, "TRACE_PATH", dummy_trace)
     monkeypatch.setenv("LLM_PROVIDER", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "dummy_key")
 

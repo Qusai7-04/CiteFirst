@@ -17,7 +17,9 @@ for _mod, _stub in [
         )
     )),
     ("sentence_transformers", SimpleNamespace(
-        SentenceTransformer=lambda *a, **k: object(),
+        SentenceTransformer=lambda *a, **k: SimpleNamespace(
+            encode=lambda texts, *a, **k: __import__("numpy").zeros((len(texts), 384)) if isinstance(texts, list) else __import__("numpy").zeros(384)
+        ),
         CrossEncoder=lambda *a, **k: SimpleNamespace(
             predict=lambda pairs, *a, **k: 2.0 if (len(pairs) == 2 and isinstance(pairs[0], str) and isinstance(pairs[1], str)) else __import__("numpy").array([2.0] * len(pairs))
         )

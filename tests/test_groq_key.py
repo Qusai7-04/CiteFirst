@@ -14,6 +14,7 @@ def test_groq_key_is_required_only_at_call_time(monkeypatch):
             self.chat = SimpleNamespace(completions=SimpleNamespace(create=lambda **kwargs:
                 SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=" answer "))])))
 
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setitem(sys.modules, "dotenv", SimpleNamespace(load_dotenv=lambda: None))
     monkeypatch.setitem(sys.modules, "groq", SimpleNamespace(Groq=FakeGroq, RateLimitError=RuntimeError))

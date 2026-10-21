@@ -15,11 +15,16 @@ vector_vault*/
 papers/
 *.pdf
 *.sqlite3
+vault.db
+*.db
 
 # ── Generated Evaluation Output ─────────────────────────
 confusion_matrix_*.png
 metrics_chart_*.png
 public/loading.mp4
+VALIDATION_LOG.txt
+MANIFEST.txt
+*.patch
 
 # ── Node / Next.js ──────────────────────────────────────
 node_modules/
@@ -67,6 +72,9 @@ PHASE*_CLAUDE_PROMPT*
 CLAUDE_*PROMPT*
 GEMINI_*PROMPT*
 GEMINI_CITEFIRST_*
+CiteFirst_*PROMPT*
+*Viva_Preparation*
+Dataset_Description*
 *CHANGELOG_FOR_REVIEW*
 *REVIEW_FINDINGS*
 *REVIEW_WORKSHEET*
@@ -74,3 +82,4 @@ CANDIDATE_REVIEW_WORKSHEET*
 *.zip
 _zip_review/
 scratch/
+docs/evaluation/phase4_human_answer_review_packet.md

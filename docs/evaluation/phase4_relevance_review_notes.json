@@ -1,0 +1,157 @@
+{
+  "review_metadata": {
+    "reviewer": "Qusai",
+    "review_date": "2026-10-21",
+    "source_file": "phase4_relevance.json",
+    "questions_file_used": "phase4_new_questions.json (NOT PROVIDED - question intent inferred from each row's proposed passage; see caveat below)",
+    "caveat": "phase4_new_questions.json was not supplied. Question intent for Q019-Q026 was inferred from the proposed passage/query context (e.g. Q019 = GAN optimal discriminator; Q020 = Adam default hyperparameters; Q021 = ResNet residual mapping; Q022 = CRAG confidence-based actions; Q023 = GFS chunk size / lazy allocation; Q024 = Self-RAG reflection tokens; Q025 = AMA multi-agent memory; Q026 = CGM mass via OVII resonant scattering). If the actual questions differ, these judgments may need revision.",
+    "scope_warning": "16 judgments only. The remaining potentially relevant papers in the corpus are unjudged, so corpus-wide Recall@K / Precision@K are NOT valid from this file.",
+    "how_verified": "Each named PDF was text-extracted (all pages digital). The listed physical page was read directly. For every proposed NONRELEVANT row, the full text of the paper was searched for topic terms, not just the title."
+  },
+  "rows": [
+    {
+      "query_id": "Q019",
+      "source_filename": "1406.2661v1.pdf",
+      "page": 4,
+      "proposed": "relevant",
+      "judgment": "relevant",
+      "reviewer": "Qusai",
+      "reason": "Verified on physical page 4 (Section 4.1, 'Global Optimality of pg = pdata'). The page states Proposition 1 verbatim: 'For G fixed, the optimal discriminator D is D*_G(x) = pdata(x)/(pdata(x)+pg(x))' (Eq. 2). The proposed passage accurately reflects page 4, and the page directly supplies the GAN optimal-discriminator evidence."
+    },
+    {
+      "query_id": "Q019",
+      "source_filename": "1512.03385v1.pdf",
+      "page": 1,
+      "proposed": "nonrelevant",
+      "judgment": "nonrelevant",
+      "reviewer": "Qusai",
+      "reason": "Page 1 is the title/abstract page of 'Deep Residual Learning for Image Recognition' (ResNet) - the passage accurately reflects the page. I did not stop at the title: a full-text search of the whole PDF found zero occurrences of 'discriminator', 'generative adversarial', 'adversarial net', or 'minimax'. The paper is about image-recognition residual learning and supplies no evidence on the GAN optimal discriminator."
+    },
+    {
+      "query_id": "Q020",
+      "source_filename": "1412.6980v9.pdf",
+      "page": 2,
+      "proposed": "relevant",
+      "judgment": "relevant",
+      "reviewer": "Qusai",
+      "reason": "Verified on physical page 2 (Algorithm 1, Adam). The page states verbatim: 'Good default settings for the tested machine learning problems are alpha = 0.001, beta1 = 0.9, beta2 = 0.999 and epsilon = 10^-8.' The proposed passage accurately reflects page 2 and directly supplies the Adam default-hyperparameter evidence."
+    },
+    {
+      "query_id": "Q020",
+      "source_filename": "1406.2661v1.pdf",
+      "page": 1,
+      "proposed": "nonrelevant",
+      "judgment": "nonrelevant",
+      "reviewer": "Qusai",
+      "reason": "Page 1 is the title page of 'Generative Adversarial Nets' - the passage accurately reflects the page. Not title-only: a full-text search of the whole PDF found zero occurrences of 'adam', 'beta1', 'beta2', or 'moment estimate'. The paper defines a generative minimax game and supplies no evidence on Adam's optimizer hyperparameters."
+    },
+    {
+      "query_id": "Q021",
+      "source_filename": "1512.03385v1.pdf",
+      "page": 2,
+      "proposed": "relevant",
+      "judgment": "relevant",
+      "reviewer": "Qusai",
+      "reason": "Verified on physical page 2 (Section 3.1, Residual Learning). The page states verbatim: 'Formally, denoting the desired underlying mapping as H(x), we let the stacked nonlinear layers fit another mapping of F(x) := H(x)-x.' The same page introduces 'shortcut connections' and Figure 2. Passage accurately reflects page 2 and supplies the ResNet residual-mapping evidence."
+    },
+    {
+      "query_id": "Q021",
+      "source_filename": "1412.6980v9.pdf",
+      "page": 1,
+      "proposed": "nonrelevant",
+      "judgment": "nonrelevant",
+      "reviewer": "Qusai",
+      "reason": "Page 1 is the title page 'Adam: A Method for Stochastic Optimization' - the passage accurately reflects the page. Not title-only: a full-text search of the whole PDF found zero occurrences of 'residual', 'shortcut', 'resnet', or 'identity mapping'. The paper supplies no evidence defining residual blocks / shortcut connections."
+    },
+    {
+      "query_id": "Q022",
+      "source_filename": "2401.15884v3.pdf",
+      "page": 5,
+      "proposed": "relevant",
+      "judgment": "relevant",
+      "reviewer": "Qusai",
+      "reason": "Verified on physical page 5 (Section 4.3, 'Action Trigger'). The page states verbatim: 'Based on the aforementioned confidence score for each retrieved document, three types of actions are designed and triggered accordingly where the upper and lower thresholds are set.' Algorithm 1 on the same page shows the CORRECT/INCORRECT/AMBIGUOUS branches. Passage accurately reflects page 5 and supplies the CRAG confidence-action evidence."
+    },
+    {
+      "query_id": "Q022",
+      "source_filename": "2005.11401v4.pdf",
+      "page": 1,
+      "proposed": "nonrelevant",
+      "judgment": "nonrelevant",
+      "reviewer": "Qusai",
+      "reason": "Page 1 is the title page 'Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks' - the passage accurately reflects the page. Not title-only: a full-text search of the whole PDF found zero occurrences of 'corrective', 'confidence score', 'threshold', 'ambiguous', or 'crag'. The base RAG paper supplies no evidence on CRAG's confidence-triggered actions."
+    },
+    {
+      "query_id": "Q023",
+      "source_filename": "945445.945450.pdf",
+      "page": 4,
+      "proposed": "relevant",
+      "judgment": "relevant",
+      "reviewer": "Qusai",
+      "reason": "Verified on physical page 4 (Section 2.5, 'Chunk Size'). The page states: 'We have chosen 64 MB, which is much larger than typical file system block sizes. Each chunk replica is stored as a plain Linux file on a chunkserver and is extended only as needed. Lazy space allocation avoids wasting space due to internal fragmentation...'. The passage is a light compression of page 4 (not verbatim) but substantively accurate, and the page supplies the GFS chunk-size evidence."
+    },
+    {
+      "query_id": "Q023",
+      "source_filename": "1294261.1294281.pdf",
+      "page": 1,
+      "proposed": "nonrelevant",
+      "judgment": "nonrelevant",
+      "reviewer": "Qusai",
+      "reason": "PASSAGE MISMATCH: the proposed passage/title is 'The Tail at Scale', but physical page 1 is the title page of 'Dynamo: amazon's highly available key-value store' (DOI 10.1145/1294261.1294281). The string 'The Tail at Scale' occurs 0 times in the whole PDF. So the passage does NOT accurately reflect the named page/file. On relevance: full-text search found no 'chunk size', '64 MB', or 'lazy space' (Dynamo only cites 'Google File System' once, in related work, p5). The file supplies no GFS chunk-parameter evidence. Judgment is nonrelevant for this file, but the row's passage is mislabeled and should be corrected (or the intended paper re-attached)."
+    },
+    {
+      "query_id": "Q024",
+      "source_filename": "2310.11511v1.pdf",
+      "page": 4,
+      "proposed": "relevant",
+      "judgment": "relevant",
+      "reviewer": "Qusai",
+      "reason": "Verified on physical page 4. Table 1 defines the four Self-RAG reflection tokens with inputs/outputs/definitions (Retrieve {yes,no,continue}; ISREL {relevant,irrelevant}; ISSUP {fully/partially/no support}; ISUSE {5..1}), and Algorithm 1 shows their use at inference. The passage accurately reflects page 4 and supplies the reflection-token evidence."
+    },
+    {
+      "query_id": "Q024",
+      "source_filename": "2401.15884v3.pdf",
+      "page": 1,
+      "proposed": "nonrelevant",
+      "judgment": "nonrelevant",
+      "reviewer": "Qusai",
+      "reason": "Page 1 is the title page 'Corrective Retrieval Augmented Generation' - the passage accurately reflects the page. Not title-only: I searched the full text. CRAG mentions Self-RAG and 'reflection tokens' only in passing (e.g. p7: Self-RAG 'tuned the LLaMA2 on the instruction-tuning data containing several sets of reflection tokens which were labeled by GPT-4'; also pp.2,4,8,9,10,15,16 in tables/related work) but never defines the token vocabulary (Retrieve/ISREL/ISSUP/ISUSE). For a question about the Self-RAG reflection-token definitions, this paper supplies no answering evidence. Caveat: because the paper does contain passing Self-RAG/reflection-token mentions, this 'nonrelevant' is specific to the reflection-token-definition question; if the question is broader, reconsider."
+    },
+    {
+      "query_id": "Q025",
+      "source_filename": "AMA_AdaptiveMemoryviaMultiAgentCollaboration_compressed.pdf",
+      "page": 3,
+      "proposed": "relevant",
+      "judgment": "relevant",
+      "reviewer": "Qusai",
+      "reason": "Verified on physical page 3. Figure 2 caption describes the AMA framework's four agents (Retriever routes inputs to granularities; Judge audits relevance and detects conflicts; Refresher executes updates/deletions; Constructor synthesizes validated context) and the Raw Text / Fact Knowledge / Episode granularities. The proposed passage is a light paraphrase (e.g. it says 'Memory Constructor formats verified information into distinct granularities' where the caption says 'Constructor synthesizes the validated context into structured memory entries'), substantively accurate. Supplies the AMA framework evidence."
+    },
+    {
+      "query_id": "Q025",
+      "source_filename": "1406.2661v1.pdf",
+      "page": 1,
+      "proposed": "nonrelevant",
+      "judgment": "nonrelevant",
+      "reviewer": "Qusai",
+      "reason": "Page 1 is the title page 'Generative Adversarial Nets' - the passage accurately reflects the page. Not title-only: a full-text search of the whole PDF found zero occurrences of 'memory', 'multi-agent', 'agent collaboration', or 'adaptive memory'. The paper supplies no evidence on LLM multi-agent memory systems."
+    },
+    {
+      "query_id": "Q026",
+      "source_filename": "2603.25600v1.pdf",
+      "page": 1,
+      "proposed": "relevant",
+      "judgment": "relevant",
+      "reviewer": "Qusai",
+      "reason": "Verified on physical page 1 (abstract). The page states verbatim: 'We propose a novel method for evaluating the CGM mass using resonant scattering of the helium-like oxygen (OVII) resonant line at E = 574 eV.' The passage accurately reflects page 1 and supplies the CGM-mass / OVII resonant-scattering evidence."
+    },
+    {
+      "query_id": "Q026",
+      "source_filename": "1807.06209v4.pdf",
+      "page": 1,
+      "proposed": "nonrelevant",
+      "judgment": "nonrelevant",
+      "reviewer": "Qusai",
+      "reason": "Page 1 is the title page 'Planck 2018 results. VI. Cosmological parameters' - the passage accurately reflects the page. Not title-only: a full-text search of the entire 73-page PDF found zero occurrences of 'OVII', 'circumgalactic', 'CGM', 'resonant scattering', '574 eV', or 'helium-like oxygen'. The paper supplies no evidence on CGM mass via OVII resonant scattering."
+    }
+  ]
+}

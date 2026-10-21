@@ -82,7 +82,7 @@ export default function SettingsPanel() {
       fields: [
         { key: "MAX_VERIFIED_CHUNKS" as const, label: "Max Verified Chunks", min: 1, max: 10, step: 1 },
         { key: "SOFTMAX_MASS_CUTOFF" as const, label: "Softmax Mass Cutoff", min: 0.5, max: 1.0, step: 0.01 },
-        { key: "TOTAL_DOCS" as const, label: "Total Documents (for eval)", min: 1, max: 200, step: 1 },
+        { key: "TOTAL_DOCS" as const, label: "Legacy document count (unused by retrieval evaluation)", min: 1, max: 200, step: 1 },
       ]
     },
   ];

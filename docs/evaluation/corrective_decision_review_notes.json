@@ -1,0 +1,49 @@
+{
+  "review_metadata": {
+    "reviewer": "Qusai",
+    "review_date": "2026-10-21",
+    "source_file": "corrective_decision_fixtures.json",
+    "fixtures_file_available": false,
+    "caveat": "corrective_decision_fixtures.json was NOT attached. The four cases were reviewed against the exact question described in the task's 'What you should verify' column, and the supplied passages were identified from the attached PDFs (Adam p2; Transformer residual-connection passage; ResNet residual-mapping passage). If the fixture questions/passages differ from this reconstruction, re-check.",
+    "certification_rule": "human_verified is left FALSE on every case. These are AI-recorded review decisions; Gemini may enter the approved judgments and reviewer details but must not self-certify them as human-verified.",
+    "decision_vocabulary": "APPROVE = proposed decision is correct as-is; REVISE = correct in direction but label/wording should change; REJECT = proposed decision is wrong."
+  },
+  "cases": [
+    {
+      "case_id": "CORR-001",
+      "proposed_decision": "relevant",
+      "review_decision": "APPROVE",
+      "judgment": "relevant",
+      "page_checked": "1412.6980v9-2.pdf, physical page 2 (Algorithm 1, Adam)",
+      "reasoning": "The question asks for Adam's beta_1, beta_2 and epsilon defaults. Page 2 states verbatim: 'Good default settings for the tested machine learning problems are alpha = 0.001, beta1 = 0.9, beta2 = 0.999 and epsilon = 10^-8.' All three requested values (beta_1 = 0.9, beta_2 = 0.999, epsilon = 10^-8) are supplied on the inspected page, so the passage answers the exact question. Proposed 'relevant' is correct.",
+      "human_verified": false
+    },
+    {
+      "case_id": "CORR-002",
+      "proposed_decision": "partially_relevant",
+      "review_decision": "APPROVE",
+      "judgment": "partially_relevant",
+      "page_checked": "1412.6980v9-2.pdf, physical page 2 (Algorithm 1, Adam)",
+      "reasoning": "The supplied page-2 passage gives the default hyperparameters and shows bias-corrected moment estimates (mt/(1-beta_1^t), vt/(1-beta_2^t)) in Algorithm 1, but it does not explain WHY zero initialization of the moment vectors causes a bias toward zero. That explanation is deferred: page 2 only says 'Section 3 explains our initialization bias correction technique'. Judged strictly on the supplied passage (no outside evidence), it answers the 'what are the defaults' part but not the 'why does zero initialization cause bias' part, so 'partially_relevant' is correct.",
+      "human_verified": false
+    },
+    {
+      "case_id": "CORR-003",
+      "proposed_decision": "irrelevant",
+      "review_decision": "APPROVE",
+      "judgment": "irrelevant",
+      "page_checked": "1706.03762v7.pdf, physical page 3 (Section 3.1, Encoder and Decoder Stacks)",
+      "reasoning": "The supplied Transformer passage reads: 'We employ a residual connection [11] around each of the two sub-layers, followed by layer normalization [1]. That is, the output of each sub-layer is LayerNorm(x + Sublayer(x))...'. The question asks specifically about the ResNet residual mapping (F(x) := H(x) - x with identity shortcut connections). The Transformer passage describes its own post-layer-norm residual wrapping and never states the ResNet residual-mapping formulation, so it does not address the question. Proposed 'irrelevant' is correct.",
+      "human_verified": false
+    },
+    {
+      "case_id": "CORR-004",
+      "proposed_decision": "insufficient_evidence",
+      "review_decision": "APPROVE",
+      "judgment": "insufficient_evidence",
+      "page_checked": "1512.03385v1-2.pdf (ResNet), residual-learning passage; full-text check across all 12 pages",
+      "reasoning": "The supplied ResNet passage is on the target topic (residual learning) but contains no exact training runtime in seconds. To test the claim I searched the entire ResNet PDF: it reports FLOPs (e.g. 3.8 billion / 11.3 billion) and iteration counts (e.g. 'terminate training at 64k iterations') but no 'seconds' or other time-unit runtime figure appears. The supplied passage therefore does not supply the requested figure, and its silence does not by itself prove no such figure exists elsewhere in the paper or corpus - which is exactly what 'insufficient_evidence' captures. Proposed decision is correct.",
+      "human_verified": false
+    }
+  ]
+}

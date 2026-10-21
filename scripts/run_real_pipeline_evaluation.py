@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 def sanitize_message(text: str) -> str:
     if not isinstance(text, str):
         return str(text)
-    for key_name in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY"):
+    for key_name in ("OPENROUTER_API_KEY",):
         val = os.environ.get(key_name)
         if val and len(val) > 4 and val in text:
             text = text.replace(val, f"[REDACTED_{key_name}]")
@@ -362,34 +362,17 @@ def generate_worksheet(all_questions: dict, results_map: dict, provider_name: st
 
 def run_evaluation():
     settings = load_settings()
-    provider_name = providers.selected_provider()
-    key_configured = False
+    provider_name = "openrouter"
+    o_key = os.environ.get("OPENROUTER_API_KEY", "")
+    key_configured = bool(o_key and not o_key.startswith("PASTE_YOUR_") and not o_key.startswith("your_"))
+    model_name = os.getenv("OPENROUTER_MODEL", providers.OPENROUTER_DEFAULT_MODEL)
 
-    if provider_name == "openrouter":
-        o_key = os.environ.get("OPENROUTER_API_KEY", "")
-        key_configured = bool(o_key and not o_key.startswith("PASTE_YOUR_") and not o_key.startswith("your_"))
-    elif provider_name == "gemini":
-        g_key = os.environ.get("GEMINI_API_KEY", "")
-        key_configured = bool(g_key and not g_key.startswith("PASTE_YOUR_") and not g_key.startswith("your_"))
-    elif provider_name == "groq":
-        gr_key = os.environ.get("GROQ_API_KEY", "")
-        key_configured = bool(gr_key and not gr_key.startswith("your_"))
-    else:
-        key_configured = True
-
-    if provider_name == "openrouter":
-        model_name = os.getenv("OPENROUTER_MODEL", providers.OPENROUTER_DEFAULT_MODEL)
-    elif provider_name == "gemini":
-        model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    else:
-        model_name = os.getenv("ANSWER_MODEL", "meta-llama/llama-3.3-70b-instruct")
-
-    print(f"=== CiteFirst Phase 4 Real Pipeline Evaluation ===")
+    print(f"=== CiteFirst Pipeline Evaluation ===")
     print(f"Provider: {provider_name} | Key configured: {key_configured}")
     print(f"Model Pinned: {model_name}")
 
     if not key_configured:
-        print(f"ERROR: Provider '{provider_name}' has no active API key configured. Halting execution.")
+        print(f"ERROR: OPENROUTER_API_KEY is not configured. Halting execution.")
         return
 
     all_q = load_all_question_data()
@@ -397,9 +380,9 @@ def run_evaluation():
     dev_qids = [f"Q{i:03d}" for i in range(1, 23)]
     pilot_qids = [f"Q{i:03d}" for i in range(23, 27)]
 
-    dev_out = ROOT / "evaluation_results/phase4_dev_generation_results.json"
-    pilot_out = ROOT / "evaluation_results/phase4_held_out_generation_results.json"
-    worksheet_out = ROOT / "docs/evaluation/phase4_generation_worksheet.json"
+    dev_out = ROOT / "evaluation_results/live_dev_generation_results.json"
+    pilot_out = ROOT / "evaluation_results/live_pilot_generation_results.json"
+    worksheet_out = ROOT / "evaluation_results/live_generation_worksheet.json"
 
     # Check for safe resume in development
     dev_results = []

@@ -29,8 +29,7 @@ def test_generation_status_not_run_when_provider_not_called(tmp_path, monkeypatc
     Ensures that a configured key alone never marks generation_status as EXECUTED
     when no live generation actually executed.
     """
-    monkeypatch.setenv("LLM_PROVIDER", "gemini")
-    monkeypatch.setenv("GEMINI_API_KEY", "dummy_test_key_not_real")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-dummy_test_key_not_real")
 
     target_out = tmp_path / "test_worksheet.json"
     dummy_trace = tmp_path / "test_trace.json"
@@ -98,8 +97,7 @@ def test_generation_context_page_and_metadata_integrity(tmp_path, monkeypatch):
     import scripts.capture_generation_worksheet as cgw
     monkeypatch.setattr(cgw, "WORKSHEET_PATH", target_out)
     monkeypatch.setattr(cgw, "TRACE_PATH", dummy_trace)
-    monkeypatch.setenv("LLM_PROVIDER", "gemini")
-    monkeypatch.setenv("GEMINI_API_KEY", "dummy_key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-dummy_key")
 
     cgw.capture_generation_worksheet(limit=1)
     data = json.loads(target_out.read_text(encoding="utf-8"))
@@ -118,22 +116,17 @@ def test_generation_context_page_and_metadata_integrity(tmp_path, monkeypatch):
 def test_error_handling_and_prevention_of_secret_logging():
     """
     Verifies that error recording sanitizes any potential secret keys or authorization headers
-    for both OpenRouter and Gemini.
+    for OpenRouter.
     """
     secret_or = "sk-or-v1-abcdef1234567890dummysecret"
     os.environ["OPENROUTER_API_KEY"] = secret_or
-    secret_gem = "dummy_secret_token_1234567890_abcdef"
-    os.environ["GEMINI_API_KEY"] = secret_gem
     try:
-        error_msg = f"API request failed with Bearer {secret_or} and token {secret_gem}: 401 Unauthorized"
+        error_msg = f"API request failed with Bearer {secret_or}: 401 Unauthorized"
         sanitized = sanitize_message(error_msg)
         assert secret_or not in sanitized
-        assert secret_gem not in sanitized
         assert "[REDACTED_OPENROUTER_API_KEY]" in sanitized
-        assert "[REDACTED_GEMINI_API_KEY]" in sanitized
     finally:
         del os.environ["OPENROUTER_API_KEY"]
-        del os.environ["GEMINI_API_KEY"]
 
 
 def test_multipage_approved_pages_extraction():
@@ -166,7 +159,6 @@ def test_model_propagation_to_all_logic_engine_stages(monkeypatch):
     """
     Verifies that logic_engine passes OPENROUTER_MODEL to all generation call sites.
     """
-    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
     monkeypatch.setenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
     monkeypatch.setattr(logic_engine, "ANSWER_MODEL", "meta-llama/llama-3.3-70b-instruct")
     monkeypatch.setattr(logic_engine, "LIGHT_TEXT_MODEL", "meta-llama/llama-3.3-70b-instruct")
@@ -258,7 +250,7 @@ def test_exact_context_capture_without_duplicate_retrieval(monkeypatch):
         "split": "development_new"
     }
 
-    res = evaluate_single_question(q_data, provider_name="gemini", model_name="gemini-2.5-flash")
+    res = evaluate_single_question(q_data, provider_name="openrouter", model_name="meta-llama/llama-3.3-70b-instruct")
 
     # Verify only ONE pipeline call was made
     assert len(search_calls) == 1
@@ -280,7 +272,7 @@ def test_provider_error_propagation_and_classification(monkeypatch):
     with status FAILED_PROVIDER_... and does not masquerade as an abstention.
     """
     def mock_fail(query, *args, **kwargs):
-        raise providers.ProviderError("Gemini API error (403): API key invalid")
+        raise providers.ProviderError("OpenRouter API error (403): API key invalid")
 
     monkeypatch.setattr("scripts.run_real_pipeline_evaluation.run_logic_engine", mock_fail)
 
@@ -295,7 +287,7 @@ def test_provider_error_propagation_and_classification(monkeypatch):
         "split": "development_existing"
     }
 
-    res = evaluate_single_question(q_data, provider_name="gemini", model_name="gemini-2.5-flash")
+    res = evaluate_single_question(q_data, provider_name="openrouter", model_name="meta-llama/llama-3.3-70b-instruct")
 
     assert res["pipeline_execution"]["generation_status"] == "FAILED_PROVIDER_PROVIDERERROR"
     assert "ProviderError" in res["pipeline_execution"]["error"]["type"]

@@ -72,17 +72,9 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # ── Model config ───────────────────────────────────────────────────────────────
 OPENROUTER_DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct"
-GEMINI_DEFAULT_MODEL     = "gemini-2.5-flash"
-if os.getenv("LLM_PROVIDER", "openrouter") == "openrouter":
-    DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", OPENROUTER_DEFAULT_MODEL)
-elif os.getenv("LLM_PROVIDER") == "gemini":
-    DEFAULT_MODEL = os.getenv("GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
-else:
-    DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", OPENROUTER_DEFAULT_MODEL)
-
-GEMINI_MODEL     = os.getenv("GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", OPENROUTER_DEFAULT_MODEL)
 LIGHT_TEXT_MODEL = os.getenv("LIGHT_TEXT_MODEL", DEFAULT_MODEL)
-ANSWER_MODEL     = os.getenv("ANSWER_MODEL", DEFAULT_MODEL)
+ANSWER_MODEL = os.getenv("ANSWER_MODEL", DEFAULT_MODEL)
 # ── Vault schema ───────────────────────────────────────────────────────────────
 VAULT_SCHEMA = check_vault_schema()   # "new" | "legacy" | "unknown"
 

@@ -43,7 +43,6 @@ def test_reranker_is_lazy_retryable_and_shared(monkeypatch):
         return object()
 
     monkeypatch.setitem(sys.modules, "dotenv", SimpleNamespace(load_dotenv=lambda: None))
-    monkeypatch.setitem(sys.modules, "groq", SimpleNamespace(Groq=lambda **kwargs: object()))
     monkeypatch.setitem(sys.modules, "database", SimpleNamespace(
         search_vault=lambda *args, **kwargs: None, DOMAIN_KEYWORDS={},
         check_vault_schema=lambda: "new"))

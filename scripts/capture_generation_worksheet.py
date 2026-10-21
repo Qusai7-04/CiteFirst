@@ -35,15 +35,9 @@ def capture_generation_worksheet(limit=None):
     records, dataset_digest = load_dataset(dataset_path)
     audited = audit_records(records)
 
-    provider = settings.get("LLM_PROVIDER", "gemini")
-    if provider == "gemini":
-        gemini_key = os.environ.get("GEMINI_API_KEY", "")
-        live_provider_configured = bool(gemini_key and not gemini_key.startswith("PASTE_YOUR_") and not gemini_key.startswith("your_"))
-    elif provider == "groq":
-        groq_key = os.environ.get("GROQ_API_KEY", "")
-        live_provider_configured = bool(groq_key and not groq_key.startswith("your_"))
-    else:
-        live_provider_configured = bool(provider == "ollama")
+    provider = "openrouter"
+    o_key = os.environ.get("OPENROUTER_API_KEY", "")
+    live_provider_configured = bool(o_key and not o_key.startswith("PASTE_YOUR_") and not o_key.startswith("your_"))
 
     print(f"Generation Worksheet Capture:")
     print(f"  Configured Provider: {provider} (Active: {live_provider_configured})")

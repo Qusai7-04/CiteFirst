@@ -107,24 +107,13 @@ cp .env.example .env
 
 ### 2. Provider Configuration
 
-Edit `.env` to configure your preferred LLM provider:
+Edit `.env` to configure your OpenRouter API key and model:
 
 ```dotenv
-# Provider options: openrouter (default), gemini, or ollama
-LLM_PROVIDER=openrouter
-
-# OpenRouter (default)
+# OpenRouter Configuration (Single Supported Provider)
 OPENROUTER_API_KEY=your_actual_key_here
 OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-
-# Google Gemini (optional alternative)
-# GEMINI_API_KEY=your_gemini_key_here
-# GEMINI_MODEL=gemini-2.5-flash
-
-# Ollama local models (optional local alternative)
-# OLLAMA_BASE_URL=http://localhost:11434
-# OLLAMA_MODEL=llama3.1:8b
 ```
 
 ---
@@ -210,12 +199,10 @@ CiteFirst includes a canonical 26-question evaluation benchmark (`docs/evaluatio
 3. **Missing Approved Pages**: In 7 questions (`Q005`, `Q006`, `Q008`, `Q009`, `Q011`, `Q020`, `Q022`), the pipeline failed to deliver the approved physical page into the final generation context due to upstream retrieval or reranker cutoffs.
 4. **Citations Require Verification**: Citations emitted in answers reflect retrieved context passages and are not guaranteed to be complete or accurate; development generation achieved only a 2/22 (9.1%) human acceptance rate, and all outputs require independent verification against original source PDFs.
 
-For full methodologies, signed forms, and detailed logs, consult:
-- [Phase 4 Evaluation Report](docs/evaluation/phase4.md)
-- [Phase 4 Execution Report](PHASE4_EXECUTION_REPORT_CORRECTED.md)
+For full methodologies, partitioned metrics, and cryptographic provenance, consult:
+- [Pipeline Evaluation & Benchmark Report](docs/evaluation/evaluation_report.md)
 - Canonical Benchmark: [`docs/evaluation/phase4_questions.json`](docs/evaluation/phase4_questions.json)
-- Authoritative Signed Evidence Form: [`phase4_human_evidence_signoff.md`](phase4_human_evidence_signoff.md)
-- Authoritative Signed Answer Form: [`phase4_human_answer_verdict_form.md`](phase4_human_answer_verdict_form.md)
+- Authoritative Signed Evidence Forms & Frozen Worksheets: Preserved in private archive with verified SHA-256 hashes recorded in [`docs/evaluation/evaluation_report.md`](docs/evaluation/evaluation_report.md).
 
 ---
 

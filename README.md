@@ -1,8 +1,8 @@
 # CiteFirst
 
-CiteFirst is a citation-grounded research application for question-answering across scientific papers. It couples hybrid passage retrieval and cross-encoder reranking with a corrective triage pipeline, ensuring that generated answers cite source PDF filenames and physical page numbers directly corresponding to inspected document text.
+CiteFirst is a citation-grounded research application for question-answering across scientific papers. It couples hybrid passage retrieval and cross-encoder reranking with a corrective triage pipeline, aiming to anchor generated answers to inspected document text with source PDF filenames and physical page numbers.
 
-An answer, retrieval score, or status badge is never an automated guarantee of factual truth: all cited sources and physical pages are presented in the interface for human verification against the original papers.
+An answer, retrieval score, citation, or status badge is never an automated guarantee of factual truth or complete citation accuracy: on development questions, generated answers achieved a 2/22 (9.1%) human acceptance rate, and all cited sources and physical pages require independent human verification against the original papers.
 
 ---
 
@@ -208,6 +208,7 @@ CiteFirst includes a canonical 26-question evaluation benchmark (`docs/evaluatio
 1. **Development vs. Pilot Performance**: On the 22 iterative development questions (Q001–Q022), only **2 of 22 (9.1%)** generated answers received an `ACCEPT` verdict from human evaluation, with 9 receiving `PARTIAL` and 11 `REJECT`. Conversely, all 4 questions in the disclosed pilot partition (Q023–Q026) received `ACCEPT`. As documented in [Phase 4 Report](docs/evaluation/phase4.md), pilot candidates were inspected during query formulation, so the 4/4 pilot success cannot be interpreted as a generalizable holdout rate.
 2. **Context Presence vs. Claim Synthesis**: In 19 of 26 questions, approved answer pages were present in the final generation context passed to the LLM. However, compound reasoning requirements frequently led the generator to omit secondary claims or adopt cautious refusal phrasing despite having supporting passages available.
 3. **Missing Approved Pages**: In 7 questions (`Q005`, `Q006`, `Q008`, `Q009`, `Q011`, `Q020`, `Q022`), the pipeline failed to deliver the approved physical page into the final generation context due to upstream retrieval or reranker cutoffs.
+4. **Citations Require Verification**: Citations emitted in answers reflect retrieved context passages and are not guaranteed to be complete or accurate; development generation achieved only a 2/22 (9.1%) human acceptance rate, and all outputs require independent verification against original source PDFs.
 
 For full methodologies, signed forms, and detailed logs, consult:
 - [Phase 4 Evaluation Report](docs/evaluation/phase4.md)
@@ -230,5 +231,5 @@ For full methodologies, signed forms, and detailed logs, consult:
 
 - **Lineage**: CiteFirst originated from the CRAG-Pipeline group project created at Manipal Institute of Technology by **Sushant Shekhar Sinha**, **Kanan Gupta**, and **Qusai**. See [`NOTICE.md`](NOTICE.md) for full historical credit.
 - **Contributor Permissions**: Written permission has been received from both original co-authors (Sushant Shekhar Sinha and Kanan Gupta) to copy, modify, redistribute, and publicly release their original contributions as part of CiteFirst with authorship credit.
-- **License Status**: Selection of the exact SPDX license identifier for CiteFirst's original project code remains under review (recommended: `AGPL-3.0-or-later` to align with PyMuPDF's AGPL requirements). A formal `LICENSE` file will be published once the license selection is finalized.
+- **License Status**: Selection of the exact SPDX license identifier for CiteFirst's original project code remains under review (proposed choice: `AGPL-3.0-or-later` subject to final audit of PyMuPDF dependencies and asset licenses). A formal `LICENSE` file will be published once the license selection is finalized.
 - **Third-Party Materials**: All research papers, model weights, and upstream library dependencies remain governed by their respective original copyright holders and licenses.

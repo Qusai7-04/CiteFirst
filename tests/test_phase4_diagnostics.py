@@ -1,5 +1,6 @@
 import importlib.util
 import json
+from pathlib import Path
 import sys
 from types import SimpleNamespace
 
@@ -457,3 +458,64 @@ def test_human_answer_verdicts_schema_and_counts():
     q021 = by_id["Q021"]
     assert q021["overall_decision"] == "ACCEPT"
     assert q021["factual_correctness"] == "Correct"
+
+
+def test_no_unsupported_inferred_claim_page_mappings():
+    """
+    Regression test ensuring that Q001-Q018 do not contain inferred claim-level page mappings
+    that were not individually verified by human review, while preserving verified question-level evidence.
+    Also ensures Q019-Q026 retain their signed claim-level supports.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    p4_file = repo_root / "docs" / "evaluation" / "phase4_questions.json"
+    rev_file = repo_root / "reviewed_dataset.json"
+    new_file = repo_root / "docs" / "evaluation" / "phase4_new_questions.json"
+
+    questions = json.loads(p4_file.read_text(encoding="utf-8"))
+    reviewed = json.loads(rev_file.read_text(encoding="utf-8"))
+    new_q = json.loads(new_file.read_text(encoding="utf-8"))
+
+    assert len(questions) == 26
+    rev_map = {r["id"]: r for r in reviewed}
+    new_map = {n["id"]: n for n in new_q}
+
+    dev_count = 0
+    pilot_count = 0
+
+    for q in questions:
+        qid = q["id"]
+        if q["partition"] == "development":
+            dev_count += 1
+        elif q["partition"] == "disclosed_pilot":
+            pilot_count += 1
+
+        if qid in rev_map:
+            # Q001-Q018: historical Phase 3 questions
+            r = rev_map[qid]
+            assert q["question"] == r["question"]
+            assert q["reference_answer"] == r["reference_answer"]
+            assert q["required_claims"] == r["required_claims"]
+            assert len(q["approved_pages"]) > 0
+            assert len(q["relevant_evidence"]) > 0
+
+            # Must NOT contain inferred claim-level page mappings
+            cs = q.get("claim_supports", [])
+            assert cs == [], f"{qid} should not have inferred claim_supports; got: {cs}"
+
+        elif qid in new_map:
+            # Q019-Q026: Phase 4 new questions with human-signed claim supports
+            n = new_map[qid]
+            assert q["question"] == n["question"]
+            assert q["reference_answer"] == n["proposed_answer"]
+            cs = q.get("claim_supports", [])
+            assert len(cs) == len(n["claim_supports"]), f"{qid} claim_supports length mismatch"
+            for c_actual, c_expected in zip(cs, n["claim_supports"]):
+                assert c_actual["claim"] == c_expected["claim"]
+                assert c_actual["page"] == c_expected["page"]
+                assert c_actual["source_filename"] == (c_expected.get("source_filename") or n["source_filename"])
+                assert len(c_actual.get("approved_pages", [])) == 1
+                assert c_actual["approved_pages"][0]["page"] == c_expected["page"]
+
+    assert dev_count == 22
+    assert pilot_count == 4
+

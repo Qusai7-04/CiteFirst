@@ -44,6 +44,7 @@ PROJECTED OUTCOME: P≈0.78, R≈0.64, F1≈0.70
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
+from collections.abc import Callable
 import os
 import sys
 import re
@@ -254,7 +255,7 @@ def call_llm(
     model: str | None = None,
     max_tokens: int = 1024,
     retries: int = 2,
-    on_trace: callable | None = None,
+    on_trace: Callable | None = None,
 ) -> str:
     target_model = model or ANSWER_MODEL
     kwargs = {"model": target_model, "max_tokens": max_tokens, "retries": retries}
@@ -274,7 +275,7 @@ def _trim(text: str, max_words: int = CHUNK_WORD_LIMIT) -> str:
 # PHASE 3 — PRE-FLIGHT COMBINED RELEVANCE CHECK
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _combined_relevance_check(query: str, chunks: list, on_trace: callable | None = None) -> bool:
+def _combined_relevance_check(query: str, chunks: list, on_trace: Callable | None = None) -> bool:
     """
     Phase 3 — Pre-flight combined relevance check.
 
@@ -374,7 +375,7 @@ def _find_true_sentence_end(text: str, start_pos: int = 0) -> int:
     return -1
 
 
-def extract_best_sentence(query: str, chunk: str, on_trace: callable | None = None) -> str:
+def extract_best_sentence(query: str, chunk: str, on_trace: Callable | None = None) -> str:
     prompt = f"""You are a precision fact extractor for a scientific research system.
 
 The following text chunk is partially relevant to the user's question.
@@ -437,7 +438,7 @@ Rules:
         return ""
 
 
-def supplemental_search(query: str, anchor_sentence: str, n: int = 3, file_filter: str | None = None, on_trace: callable | None = None) -> tuple:
+def supplemental_search(query: str, anchor_sentence: str, n: int = 3, file_filter: str | None = None, on_trace: Callable | None = None) -> tuple:
     prompt = f"""You are a search query builder.
 Given this user question: "{query}"
 And this key sentence from a partially relevant document: "{anchor_sentence}"
@@ -474,7 +475,7 @@ def pick_more_relevant(query: str, candidate_a: str, candidate_b: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
-                    file_filter: str | None = None, on_stage=None, on_trace: callable | None = None) -> tuple:
+                    file_filter: str | None = None, on_stage=None, on_trace: Callable | None = None) -> tuple:
     """
     Phase 2: Tri-State Logic Engine.
 
@@ -671,7 +672,7 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
 # PHASE 4 — ADAPTIVE FALLBACK & CONTROLLED GENERATION
 # ══════════════════════════════════════════════════════════════════════════════
 
-def rewrite_query(original_query: str, on_trace: callable | None = None) -> str:
+def rewrite_query(original_query: str, on_trace: Callable | None = None) -> str:
     prompt = f"""You are a search query optimizer for a scientific research database.
 The following question failed to retrieve relevant results:
 "{original_query}"
@@ -687,7 +688,7 @@ more specific scientific terminology. Return ONLY the rewritten query. Keep it u
         return original_query
 
 
-def generate_final_answer(query: str, chunks: list, sources: list, on_trace: callable | None = None) -> str:
+def generate_final_answer(query: str, chunks: list, sources: list, on_trace: Callable | None = None) -> str:
     if not chunks:
         return "No information detected from the papers for your query."
     context = "\n\n---\n\n".join(
@@ -727,7 +728,7 @@ Verified Context:
     )
 
 
-def generate_soft_answer(query: str, chunks: list, sources: list, on_trace: callable | None = None) -> str:
+def generate_soft_answer(query: str, chunks: list, sources: list, on_trace: Callable | None = None) -> str:
     context = "\n\n---\n\n".join(
         f"[Source: {sources[i]}]\n{chunk}" for i, chunk in enumerate(chunks)
     )
@@ -771,7 +772,7 @@ def _evidence(chunks: list, sources: list, metadatas: list) -> list:
     return items
 
 
-def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=None, on_trace: callable | None = None) -> dict:
+def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=None, on_trace: Callable | None = None) -> dict:
     """
     Master CRAG pipeline — all 4 phases.
 

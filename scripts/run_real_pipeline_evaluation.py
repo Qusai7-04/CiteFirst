@@ -76,112 +76,34 @@ class InvocationTrace:
 
 def load_all_question_data():
     """
-    Loads development questions (Q001-Q022) and reserved/pilot questions (Q023-Q026).
-    Builds approved source/page pairs from every claim_supports and relevant_evidence item,
-    including second pages for multi-page claims (e.g. Q019-Q021).
-    Prefers canonical docs/evaluation/phase4_questions.json if available.
+    Loads canonical 26-question dataset (Q001-Q026) from docs/evaluation/phase4_questions.json.
+    Builds verified approved source/page pairs without inferring unverified claim-page mappings for Q001-Q018.
     """
     canonical_path = ROOT / "docs/evaluation/phase4_questions.json"
-    if canonical_path.exists():
-        records = json.loads(canonical_path.read_text(encoding="utf-8"))
-        q_dict = {}
-        for rec in records:
-            qid = rec["id"]
-            claims_with_pages = rec.get("claim_supports", [])
-            claims = rec.get("required_claims", [])
-            q_dict[qid] = {
-                "id": qid,
-                "question": rec["question"],
-                "gold_papers": rec["gold_papers"],
-                "reference_answer": rec.get("reference_answer", ""),
-                "claims": claims,
-                "claims_with_pages": claims_with_pages,
-                "approved_pages": rec.get("approved_pages", []),
-                "split": rec.get("partition", "development")
-            }
-        return q_dict
+    if not canonical_path.exists():
+        raise FileNotFoundError(f"Canonical Phase 4 question dataset not found at {canonical_path}.")
 
+    records = json.loads(canonical_path.read_text(encoding="utf-8"))
     q_dict = {}
-
-    # 1. Historical development Q001-Q018 from reviewed_dataset.json
-    p3_records, p3_digest = load_dataset(ROOT / "reviewed_dataset.json")
-    p3_audited = audit_records(p3_records)
-
-    for rec, aud in zip(p3_records, p3_audited):
-        qid = aud["id"]
-        approved_pages = []
-        for e in aud.get("evidence", []):
-            if e.get("source_filename") and e.get("page") is not None:
-                approved_pages.append({"source_filename": e["source_filename"], "page": e["page"]})
-
-        # Deduplicate
-        seen_pages = set()
-        dedup_pages = []
-        for p in approved_pages:
-            pair = (p["source_filename"], p["page"])
-            if pair not in seen_pages:
-                seen_pages.add(pair)
-                dedup_pages.append(p)
-
-        claims = [c["claim"] if isinstance(c, dict) else str(c) for c in rec.get("required_claims", [])]
-        claims_with_pages = []
-        for c in claims:
-            claims_with_pages.append({
-                "claim": c,
-                "approved_pages": dedup_pages
-            })
-
+    for rec in records:
+        qid = rec["id"]
+        claims = rec.get("required_claims", [])
+        cs = rec.get("claim_supports", [])
+        if cs:
+            claims_with_pages = cs
+        else:
+            claims_with_pages = [{"claim": c, "approved_pages": []} for c in claims]
         q_dict[qid] = {
             "id": qid,
             "question": rec["question"],
-            "gold_papers": aud["gold_papers"],
+            "gold_papers": rec["gold_papers"],
             "reference_answer": rec.get("reference_answer", ""),
             "claims": claims,
             "claims_with_pages": claims_with_pages,
-            "approved_pages": dedup_pages,
-            "split": "development_existing"
+            "approved_pages": rec.get("approved_pages", []),
+            "split": rec.get("partition", "development")
         }
-
-    # 2. Phase 4 questions Q019-Q026 from docs/evaluation/phase4_new_questions.json
-    new_cards_path = ROOT / "docs/evaluation/phase4_new_questions.json"
-    if new_cards_path.exists():
-        new_cards = json.loads(new_cards_path.read_text(encoding="utf-8"))
-        for card in new_cards:
-            qid = card["id"]
-            approved_pages = []
-            if card.get("page") is not None:
-                approved_pages.append({"source_filename": card["source_filename"], "page": card["page"]})
-
-            claims_with_pages = []
-            for cs in card.get("claim_supports", []):
-                c_src = cs.get("source_filename") or card["source_filename"]
-                c_pg = cs.get("page")
-                if c_src and c_pg is not None:
-                    approved_pages.append({"source_filename": c_src, "page": c_pg})
-                claims_with_pages.append({
-                    "claim": cs.get("claim", ""),
-                    "approved_pages": [{"source_filename": c_src, "page": c_pg}] if (c_src and c_pg is not None) else []
-                })
-
-            seen_pages = set()
-            dedup_pages = []
-            for p in approved_pages:
-                pair = (p["source_filename"], p["page"])
-                if pair not in seen_pages:
-                    seen_pages.add(pair)
-                    dedup_pages.append(p)
-
-            split = "development_new" if qid in {"Q019", "Q020", "Q021", "Q022"} else "disclosed_pilot"
-            q_dict[qid] = {
-                "id": qid,
-                "question": card["question"],
-                "gold_papers": [card["source_filename"]],
-                "reference_answer": card.get("proposed_answer", ""),
-                "claims": [c["claim"] for c in claims_with_pages],
-                "claims_with_pages": claims_with_pages,
-                "approved_pages": dedup_pages,
-                "split": split
-            }
+    return q_dict
 
     return q_dict
 

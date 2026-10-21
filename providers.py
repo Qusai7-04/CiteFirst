@@ -1,4 +1,5 @@
 """Generation providers. Retrieval, prompts, and evaluation remain unchanged."""
+from collections.abc import Callable
 import logging
 import os
 import time
@@ -24,7 +25,7 @@ def selected_provider() -> str:
 
 
 def chat(prompt: str, system: str, model: str | None = None,
-         max_tokens: int = 1024, retries: int = 2, on_trace: callable | None = None) -> str:
+         max_tokens: int = 1024, retries: int = 2, on_trace: Callable | None = None) -> str:
     provider = selected_provider()
 
     if provider == "openrouter":

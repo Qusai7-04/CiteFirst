@@ -215,9 +215,8 @@ For full methodologies, partitioned metrics, and cryptographic provenance, consu
 
 ---
 
-## Lineage, Permissions, & Licensing
-
+## Lineage & Permissions
+ 
 - **Lineage**: CiteFirst originated from the CRAG-Pipeline group project created at Manipal Institute of Technology by **Sushant Shekhar Sinha**, **Kanan Gupta**, and **Qusai**. See [`NOTICE.md`](NOTICE.md) for full historical credit.
 - **Contributor Permissions**: Written permission has been received from both original co-authors (Sushant Shekhar Sinha and Kanan Gupta) to copy, modify, redistribute, and publicly release their original contributions as part of CiteFirst with authorship credit.
-- **License Status**: Selection of the exact SPDX license identifier for CiteFirst's original project code remains under review (proposed choice: `AGPL-3.0-or-later` subject to final audit of PyMuPDF dependencies and asset licenses). There is currently no root `LICENSE` file installed; license selection is pending until finalized.
-- **Third-Party Materials**: All research papers, model weights, and upstream library dependencies remain governed by their respective original copyright holders and licenses.
+- **Repository Status**: CiteFirst intentionally includes no root `LICENSE` file. All third-party research papers, model weights, and upstream library dependencies remain governed by their respective copyright holders and licenses.

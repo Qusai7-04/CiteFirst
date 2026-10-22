@@ -785,7 +785,7 @@ def _evidence(chunks: list, sources: list, metadatas: list) -> list:
 
 def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=None, on_trace: Callable | None = None) -> dict:
     """
-    Master CRAG pipeline — all 4 phases.
+    Master CiteFirst corrective pipeline.
 
     Phase 1: Hybrid retrieval (database.py)
     Phase 2: Tri-state logic engine (evaluate_chunks)
@@ -971,7 +971,7 @@ if __name__ == "__main__":
 
     print()
     print("━" * 55)
-    print("  CRAG PIPELINE")
+    print("  CITEFIRST PIPELINE")
     print(f"  Vault: {VAULT_SCHEMA}  |  Phase2: {'ON' if PHASE_2_ENABLED else 'OFF (legacy)'}")
     print(f"  CORRECT={CORRECT_THRESHOLD}  AMBIGUOUS={AMBIGUOUS_THRESHOLD}")
     print(f"  Softmax={SOFTMAX_MASS_CUTOFF}  CombinedCheck=ON  Cap={MAX_VERIFIED_CHUNKS}")

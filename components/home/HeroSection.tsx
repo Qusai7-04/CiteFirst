@@ -29,10 +29,10 @@ export default function HeroSection() {
           Corrective RAG • Hybrid Retrieval • Multi-Stage Grounding
         </div>
 
-        <h1 style={{ fontSize: "clamp(3rem, 8vw, 5.5rem)", fontWeight: 900, lineHeight: 1.1, marginBottom: 24, letterSpacing: "-0.03em" }}>
-          <span style={{ color: "var(--text-primary)" }}>CRAG</span>{" "}
-          <span style={{ background: "linear-gradient(135deg,#14b8a6,#2dd4bf,#5eead4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-            Intelligence
+        <h1 style={{ fontSize: "clamp(2.5rem, 6vw, 4.5rem)", fontWeight: 900, lineHeight: 1.15, marginBottom: 24, letterSpacing: "-0.03em" }}>
+          <span style={{ color: "var(--text-primary)" }}>CiteFirst</span>{" "}
+          <span style={{ display: "block", fontSize: "clamp(1.5rem, 3.5vw, 2.5rem)", fontWeight: 700, background: "linear-gradient(135deg,#14b8a6,#2dd4bf,#5eead4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", marginTop: 8 }}>
+            Research Assistant with Citations
           </span>
         </h1>
 
@@ -60,7 +60,7 @@ export default function HeroSection() {
         </div>
 
         <div style={{ display: "flex", flexWrap: "nowrap", justifyContent: "center", gap: 24, color: "var(--text-faint)", fontSize: 13, whiteSpace: "nowrap" }}>
-          {[["30", "chunks fetched"], ["10", "reranked"], ["4-Phase", "pipeline"], ["98%", "accuracy"]].map(([val, label]) => (
+          {[["30", "candidate pool"], ["10", "reranked"], ["6", "pipeline stages"], ["66", "paper benchmark"]].map(([val, label]) => (
             <div key={label} style={{ whiteSpace: "nowrap" }}>
               <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{val}</span> {label}
             </div>

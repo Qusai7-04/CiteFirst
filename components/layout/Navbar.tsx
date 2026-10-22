@@ -16,22 +16,26 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "disconnected">("checking");
+  const [apiStatus, setApiStatus] = useState<"checking" | "connected" | "degraded" | "disconnected">("checking");
 
   useEffect(() => {
-    checkHealth().then((h) => {
-      setApiStatus(h.status === "ok" ? "connected" : "disconnected");
-    });
-    const interval = setInterval(() => {
+    const updateHealth = () => {
       checkHealth().then((h) => {
-        setApiStatus(h.status === "ok" ? "connected" : "disconnected");
-      });
-    }, 30000);
+        const isOnline = h.status === "ok" && (h.ready ?? h.pipeline_available ?? h.crag_available ?? false);
+        const isDegraded = h.status === "degraded" || (!isOnline && h.status === "ok");
+        if (isOnline) setApiStatus("connected");
+        else if (isDegraded) setApiStatus("degraded");
+        else setApiStatus("disconnected");
+      }).catch(() => setApiStatus("disconnected"));
+    };
+
+    updateHealth();
+    const interval = setInterval(updateHealth, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const dotColor = apiStatus === "connected" ? "#22c55e" : apiStatus === "disconnected" ? "#ef4444" : "#eab308";
-  const statusText = apiStatus === "connected" ? "API Connected" : apiStatus === "disconnected" ? "API Offline" : "Checking...";
+  const dotColor = apiStatus === "connected" ? "#22c55e" : apiStatus === "degraded" ? "#eab308" : apiStatus === "disconnected" ? "#ef4444" : "#eab308";
+  const statusText = apiStatus === "connected" ? "API Connected" : apiStatus === "degraded" ? "Pipeline Degraded" : apiStatus === "disconnected" ? "API Offline" : "Checking...";
 
   return (
     <nav style={{
@@ -42,7 +46,7 @@ export default function Navbar() {
     }}>
       <Link href="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
         <Brain style={{ width: 24, height: 24, color: "var(--accent)" }} />
-        <span style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>CRAG</span>
+        <span style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>CiteFirst</span>
       </Link>
       <div style={{ display: "flex", gap: 4 }}>
         {navItems.map((item) => (

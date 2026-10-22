@@ -4,11 +4,11 @@ import { motion, useInView } from "motion/react";
 import { Zap, Shield, Target, RefreshCw, AlertTriangle, Database, BarChart, GitBranch } from "lucide-react";
 
 const features = [
-  { icon: Zap, title: "Cross-Encoder Reranking", desc: "MS MARCO cross-encoder reranks 30 chunks to top 10, boosting precision over pure vector similarity.", size: "span 2" },
-  { icon: Target, title: "3-Tier Grading", desc: "Correct ≥4.5 / Ambiguous ≥0.5 / Incorrect <0.5", size: "" },
-  { icon: Shield, title: "Ambiguous Resolution", desc: "Secondary LLM pass extracts best sentence and runs supplemental search before discarding.", size: "" },
-  { icon: RefreshCw, title: "Fallback Query Rewriting", desc: "When no good context exists, query is automatically rewritten and pipeline retries.", size: "" },
-  { icon: AlertTriangle, title: "Bendy Mode", desc: "Partial match returns top 2 results with relaxed threshold (1.5).", size: "" },
+  { icon: Zap, title: "Cross-Encoder Reranking", desc: "BGE cross-encoder (BAAI/bge-reranker-base) reranks 30 candidates to top 10, boosting precision over pure vector similarity.", size: "span 2" },
+  { icon: Target, title: "3-Tier Grading", desc: "Sigmoidal grading: Correct ≥0.55 / Ambiguous ≥0.25 / Incorrect <0.25", size: "" },
+  { icon: Shield, title: "Ambiguous Resolution", desc: "Secondary pass extracts best sentence and evaluates supplemental search before discarding.", size: "" },
+  { icon: RefreshCw, title: "Fallback Query Rewriting", desc: "When no qualifying context exists, query is automatically rewritten and pipeline retries.", size: "" },
+  { icon: AlertTriangle, title: "Bendy Mode", desc: "Partial match returns top 2 candidates with relaxed threshold (0.10).", size: "" },
   { icon: Database, title: "ChromaDB Vector Store", desc: "All docs chunked, embedded with SentenceTransformers, stored in ChromaDB.", size: "" },
   { icon: BarChart, title: "Dual Grader Evaluation", desc: "LLM + Cosine Similarity graders evaluated side-by-side with full confusion matrices.", size: "span 2" },
   { icon: GitBranch, title: "4-Status Pipeline", desc: "success / fallback_success / partial_match / failed — each with color-coded badges.", size: "" },
@@ -22,8 +22,8 @@ export default function FeaturesGrid() {
     <section ref={ref} style={{ padding: "80px 24px" }}>
       <motion.div initial={{ opacity: 0, y: 30 }} animate={inView ? { opacity: 1, y: 0 } : {}} transition={{ duration: 0.6 }} style={{ textAlign: "center", marginBottom: 56 }}>
         <p style={{ color: "var(--accent)", fontFamily: "monospace", fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 12 }}>Capabilities</p>
-        <h2 style={{ fontSize: "2.5rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>Your Actual CRAG Features</h2>
-        <p style={{ color: "var(--text-muted)", fontSize: "1.1rem" }}>Not generic AI buzzwords — real features from your <code style={{ color: "var(--accent)" }}>logic_engine.py</code></p>
+        <h2 style={{ fontSize: "2.5rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>Core Architecture & Pipeline Features</h2>
+        <p style={{ color: "var(--text-muted)", fontSize: "1.1rem" }}>Deterministic citation-grounded verification, hybrid search, and corrective retrieval.</p>
       </motion.div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, maxWidth: 1100, margin: "0 auto" }}>

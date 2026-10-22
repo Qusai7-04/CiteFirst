@@ -24,7 +24,7 @@ export default function LiveDemoSection() {
   return (
     <section style={{ padding: "80px 24px", textAlign: "center" }}>
       <p style={{ color: "var(--accent)", fontFamily: "var(--font-mono, monospace)", fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 12 }}>Try It Live</p>
-      <h2 style={{ fontSize: "2.5rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>Ask CRAG a Question</h2>
+      <h2 style={{ fontSize: "2.5rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>Ask CiteFirst a Question</h2>
       <p style={{ color: "var(--text-muted)", marginBottom: 36, fontSize: "1.05rem" }}>
         Connected to your real pipeline — queries go through Fetch → Rerank → Grade → Generate
       </p>

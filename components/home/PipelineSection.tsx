@@ -20,7 +20,7 @@ export default function PipelineSection() {
     <section ref={ref} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 24px" }}>
       <motion.div initial={{ opacity: 0, y: 30 }} animate={inView ? { opacity: 1, y: 0 } : {}} transition={{ duration: 0.6 }} style={{ textAlign: "center", marginBottom: 60 }}>
         <p style={{ color: "var(--accent)", fontFamily: "monospace", fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 12 }}>How It Works</p>
-        <h2 style={{ fontSize: "2.5rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>The CRAG Pipeline</h2>
+        <h2 style={{ fontSize: "2.5rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>The CiteFirst Pipeline</h2>
         <p style={{ color: "var(--text-muted)", fontSize: "1.1rem", maxWidth: 520, margin: "0 auto" }}>Six functional stages of self-correcting retrieval, from hybrid fetch to verified answer.</p>
       </motion.div>
 

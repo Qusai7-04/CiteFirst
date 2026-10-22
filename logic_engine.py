@@ -1,10 +1,10 @@
 """
-CRAG Pipeline — Logic Engine
-Implements the 4-phase workflow:
-  Phase 1: Hybrid Mathematical Retrieval        → database.py
-  Phase 2: Single-Layer Tri-State Logic Engine  → evaluate_chunks()
-  Phase 3: Pre-Flight Combined Relevance Check  → _combined_relevance_check()
-  Phase 4: Adaptive Fallback & Controlled Gen   → run_logic_engine()
+CiteFirst Pipeline — Logic Engine
+Implements the multi-stage corrective RAG workflow:
+  Stage 1: Hybrid Retrieval (Dense + BM25 + RRF)  → database.py
+  Stage 2: Cross-Encoder Reranking & Grading     → evaluate_chunks()
+  Stage 3: Pre-Flight Combined Relevance Check   → _combined_relevance_check()
+  Stage 4: Adaptive Fallback & Controlled Gen    → run_logic_engine()
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DESIGN RATIONALE — WHY PREVIOUS FILTERS FAILED
@@ -90,6 +90,19 @@ def _get_reranker():
             if _reranker is None:
                 _reranker = CrossEncoder('BAAI/bge-reranker-base')
     return _reranker
+
+
+def _predict_pairs(reranker, pairs: list) -> list[float]:
+    """Score query-chunk pairs using batched prediction with fallback for test mocks."""
+    if not pairs:
+        return []
+    try:
+        res = reranker.predict(pairs, batch_size=32)
+        if isinstance(res, (list, np.ndarray)):
+            return [float(x) for x in res]
+        return [float(res)]
+    except TypeError:
+        return [float(reranker.predict(pair)) for pair in pairs]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -492,15 +505,21 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
         m.get("child_text") for m in raw_metadatas if m
     ) if raw_metadatas else False
 
-    # Score all chunks
+    # Score all chunks with batched cross-encoder prediction
     scored_candidates = []
-    for i, doc_chunk in enumerate(raw_chunks):
-        source     = raw_metadatas[i].get("source", "Unknown") if raw_metadatas else "Unknown"
-        score_text = (raw_metadatas[i].get("child_text", doc_chunk)
-                      if (has_child_text and raw_metadatas) else doc_chunk)
-        raw_logit  = float(_get_reranker().predict([query, _trim(score_text)]))
-        meta = raw_metadatas[i] if raw_metadatas else {}
-        scored_candidates.append((raw_logit, doc_chunk, source, score_text, meta))
+    if raw_chunks:
+        pairs = []
+        candidate_info = []
+        for i, doc_chunk in enumerate(raw_chunks):
+            source     = raw_metadatas[i].get("source", "Unknown") if raw_metadatas else "Unknown"
+            score_text = (raw_metadatas[i].get("child_text", doc_chunk)
+                          if (has_child_text and raw_metadatas) else doc_chunk)
+            meta       = raw_metadatas[i] if raw_metadatas else {}
+            pairs.append([query, _trim(score_text)])
+            candidate_info.append((doc_chunk, source, score_text, meta))
+        raw_logits = _predict_pairs(_get_reranker(), pairs)
+        for logit, (doc_chunk, source, score_text, meta) in zip(raw_logits, candidate_info):
+            scored_candidates.append((float(logit), doc_chunk, source, score_text, meta))
 
     scored_candidates.sort(key=lambda x: x[0], reverse=True)
     if on_stage:
@@ -905,10 +924,10 @@ def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=N
     log.info("  🔗 BENDY MODE — partial match")
 
     scored_bendy = []
-    for i, chunk in enumerate(chunks2):
-        score_text = (metadatas2[i].get("child_text", chunk)
-                      if (metadatas2 and metadatas2[i].get("child_text")) else chunk)
-        score = _sigmoid(float(_get_reranker().predict([user_query, _trim(score_text)])))
+    bendy_pairs = [[user_query, _trim(metadatas2[i].get("child_text", chunk) if (metadatas2 and metadatas2[i].get("child_text")) else chunk)] for i, chunk in enumerate(chunks2)]
+    bendy_logits = _predict_pairs(_get_reranker(), bendy_pairs)
+    for i, (chunk, logit) in enumerate(zip(chunks2, bendy_logits)):
+        score = _sigmoid(float(logit))
         if score >= BENDY_THRESHOLD:
             src = metadatas2[i].get("source", "Unknown") if metadatas2 else "Unknown"
             scored_bendy.append((score, chunk, src, metadatas2[i] if metadatas2 else {}))

@@ -8,8 +8,8 @@ import Sidebar from "@/components/layout/Sidebar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CRAG Intelligence Platform",
-  description: "Corrective RAG — Cross-Encoder Reranking, 3-Tier Grading, Ambiguous Resolution",
+  title: "CiteFirst — Research Assistant with Citations",
+  description: "Citation-grounded research assistant across papers using hybrid search, BGE reranking, and OpenRouter LLMs.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,5 +1,6 @@
 "use client";
 import type { Source } from "@/types/chat";
+import { getApiUrl } from "@/lib/api";
 
 interface Props { source: Source; }
 
@@ -14,11 +15,8 @@ export default function SourceCard({ source }: Props) {
   const label = source.evidenceStatus === "partial" ? "Partial evidence" :
     source.evidenceStatus === "evidence" ? "Evidence" : "Source";
   const page = source.pageNumber;
-  const baseUrl = typeof window !== "undefined" && window.location.hostname === "127.0.0.1"
-    ? "http://127.0.0.1:8000"
-    : "http://localhost:8000";
-  const href = `${baseUrl}/api/vault/document/${encodeURIComponent(source.filename)}` +
-    (page != null ? `#page=${page}` : "");
+  const href = getApiUrl(`/api/vault/document/${encodeURIComponent(source.filename)}` +
+    (page != null ? `#page=${page}` : ""));
   return (
     <div style={{
       background: "var(--bg-surface)", border: "1px solid var(--card-border)",

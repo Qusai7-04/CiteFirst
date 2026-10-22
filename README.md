@@ -1,222 +1,230 @@
-# CiteFirst
+# CiteFirst — Research Assistant with Citations
 
-CiteFirst is a citation-grounded research application for question-answering across scientific papers. It couples hybrid passage retrieval and cross-encoder reranking with a corrective triage pipeline, aiming to anchor generated answers to inspected document text with source PDF filenames and physical page numbers.
+CiteFirst is a citation-grounded research assistant for querying scientific paper collections. It pairs hybrid document retrieval and cross-encoder reranking with a multi-stage corrective triage pipeline, anchoring generated answers to inspected PDF passages with verified source filenames and physical page numbers.
 
-An answer, retrieval score, citation, or status badge is never an automated guarantee of factual truth or complete citation accuracy: on development questions, generated answers achieved a 2/22 (9.1%) human acceptance rate, and all cited sources and physical pages require independent human verification against the original papers.
+An answer, retrieval score, citation, or status badge is never an automated guarantee of factual truth: on development questions, generated answers achieved a 2/22 (9.1%) human acceptance rate, and all cited sources and physical page numbers require independent human verification against the original papers.
 
 ---
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Next.js Frontend                         │
-│         (app/, components/, hooks/, lib/, types/)           │
-│           Interactive Chat, Vault, Pipeline, & Analytics     │
-├─────────────────────────────────────────────────────────────┤
-│                   FastAPI REST Bridge                       │
-│                        (api.py)                             │
-│       Local-only endpoints bound to 127.0.0.1:8000         │
-├─────────────────────────────────────────────────────────────┤
-│               Python Corrective Pipeline                    │
-│     database.py   ──►   logic_engine.py   ──►  providers.py │
-│   (Hybrid Search)     (4-Stage CRAG Triage)   (LLM Bridge)  │
-├─────────────────────────────────────────────────────────────┤
-│                   Local Data Stores                         │
-│       vector_vault/ (ChromaDB)   │   vault.db (SQLite)      │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    User([User Query]) --> UI[Next.js 16 Web UI<br/>app/ components/ hooks/]
+    UI -->|HTTP / SSE Stream| API[FastAPI Local Bridge<br/>api.py :8000]
+    API --> Engine[CiteFirst Logic Engine<br/>logic_engine.py]
+
+    subgraph Retrieval["Stage 1: Hybrid Retrieval (database.py)"]
+        Chroma[(ChromaDB<br/>bge-small-en-v1.5<br/>Dense Vectors)]
+        BM25[(BM25 Cache<br/>Sparse Lexical)]
+        RRF[Reciprocal Rank Fusion<br/>k=60, FETCH_K=30]
+        Chroma --> RRF
+        BM25 --> RRF
+    end
+
+    Engine --> Retrieval
+    Retrieval -->|Top 30 Candidates| Rerank["Stage 2: Cross-Encoder Reranking<br/>BAAI/bge-reranker-base (PROCESS_K=10)"]
+    Rerank --> Grade{"Stage 3: Tri-State Grading<br/>Sigmoid Thresholds"}
+    
+    Grade -->|Correct >= 0.55| Verified[Verified Passages]
+    Grade -->|Ambiguous 0.25 - 0.55| Resolve["Stage 4: Ambiguous Resolution<br/>Sentence Extraction & Supplemental Search"]
+    Grade -->|Incorrect < 0.25| Discard[Discarded Passages]
+    Resolve --> Verified
+
+    Verified --> PreFlight{"Stage 5: Pre-Flight Check<br/>Combined Context Verification"}
+    PreFlight -->|Pass| LLM["Stage 6: Adaptive Generation (providers.py)<br/>OpenRouter: meta-llama/llama-3.3-70b-instruct"]
+    PreFlight -->|Fail / Empty| Fallback[Query Rewrite & Fallback Routing]
+    Fallback --> LLM
+
+    LLM --> Stream([SSE Stream to UI<br/>Status, Answer & Cited Page Badges])
 ```
 
 ---
 
-## The Four Pipeline Stages
+## The Six Pipeline Stages
 
-CiteFirst implements Corrective Retrieval-Augmented Generation (CRAG) through four deterministic, traceable stages:
+CiteFirst implements corrective retrieval-augmented generation across six modular stages:
 
-1. **Stage 1 — Hybrid Retrieval (Dense + BM25 + RRF)**
-   - **Dense vector search**: `BAAI/bge-small-en-v1.5` embeddings (384 dimensions) indexed in ChromaDB.
-   - **Sparse lexical search**: BM25 corpus matching with query preprocessing.
-   - **Reciprocal Rank Fusion (RRF)**: Fuses dense and sparse rankings to retrieve a candidate pool of `FETCH_K=30` chunks.
-   - **Parent-Child Expansion**: Chunks are scored at sentence level (child chunks), while enclosing parent chunks (up to 350 words) are expanded to supply coherent paragraph context.
-
-2. **Stage 2 — Cross-Encoder Reranking**
-   - **Model**: `BAAI/bge-reranker-base` cross-encoder.
-   - Scores full query-passage cross-attention over fetched candidates.
-   - Top `PROCESS_K=10` passages are selected and converted to normalized probabilities via sigmoid scaling.
-
-3. **Stage 3 — Tri-State Grading & Pre-Flight Triage**
+1. **Stage 1 — Hybrid Retrieval (Dense + BM25 + RRF)**:
+   - **Dense vector search**: `BAAI/bge-small-en-v1.5` embeddings (384 dimensions) stored locally in ChromaDB.
+   - **Sparse lexical search**: BM25 corpus matching with query tokenization and in-memory caching.
+   - **Reciprocal Rank Fusion (RRF)**: Merges dense and sparse rankings to collect an initial candidate pool of 30 chunks (`FETCH_K=30`).
+   - **Parent-Child Expansion**: Chunks are scored at focused sentence level (100 words), while enclosing parent chunks (350 words) provide paragraph context for the generator.
+2. **Stage 2 — Cross-Encoder Reranking**:
+   - `BAAI/bge-reranker-base` cross-encoder evaluates joint query-passage cross-attention.
+   - Predictions are batched for high-throughput CPU inference. Top 10 passages (`PROCESS_K=10`) are normalized via sigmoid scaling.
+3. **Stage 3 — Tri-State Grading**:
    - Candidate chunks are categorized into three confidence tiers:
-     - **Correct** (confidence ≥ 0.55): High-confidence supporting evidence.
-     - **Ambiguous** (0.25 ≤ confidence < 0.55): Potentially relevant context evaluated via LLM triage.
-     - **Incorrect** (confidence < 0.25): Discarded as irrelevant.
-   - **Pre-Flight Relevance Check**: If verified passages fail to answer the query, a rewritten query is triggered against the vault.
-
-4. **Stage 4 — Citation-Grounded Answer Generation**
-   - Passes only verified and resolved passages to the generation LLM.
-   - Synthesizes the answer with strict instructions to anchor claims in the provided text.
-   - Emits structured metadata including source PDF filenames, 1-based physical PDF page numbers, passage snippets, and pipeline status (`success`, `fallback_success`, `partial_match`, or `failed`).
+     - **Correct** (score ≥ 0.55): Directly accepted into verified evidence context.
+     - **Ambiguous** (0.25 ≤ score < 0.55): Forwarded to ambiguous resolution.
+     - **Incorrect** (score < 0.25): Discarded as irrelevant noise.
+4. **Stage 4 — Ambiguous Resolution**:
+   - Extracts the highest-scoring sentence from ambiguous chunks and runs targeted supplemental searches to rescue or discard candidate passages.
+5. **Stage 5 — Pre-Flight Combined Relevance Verification**:
+   - Evaluates whether the combined set of verified passages sufficiently answers the user query before invoking generation, mitigating hallucination and false positives.
+6. **Stage 6 — Adaptive Citation-Grounded Generation**:
+   - Passes verified evidence to OpenRouter LLMs (`meta-llama/llama-3.3-70b-instruct` by default).
+   - Generates responses anchored to the provided context with structured citations (source PDF filename, 1-based physical PDF page number, and evidence snippets).
 
 ---
 
-## Setup and Installation
+## Quickstart
 
 ### Prerequisites
 
-- **Python**: Version 3.10 to 3.14 (tested on Python 3.14)
-- **Node.js**: Version 18+ (tested on Node.js 20+)
-- **OS**: Windows, macOS, or Linux
+- **Python**: 3.10 to 3.14 (tested on Python 3.14)
+- **Node.js**: 18+ (tested on Node.js 22)
+- **OpenRouter API Key**: Obtain a key at [openrouter.ai](https://openrouter.ai)
 
-### 1. Environment & Dependencies
-
-#### On Windows (PowerShell):
-
-```powershell
-# Clone and enter the repository
-cd C:\PROJECTS\CiteFirst
-
-# Create and activate Python virtual environment
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# Install Python backend dependencies
-pip install -r requirements.txt
-
-# Install Next.js frontend dependencies
-npm install
-
-# Configure environment variables
-Copy-Item .env.example .env
-```
-
-#### On Unix-like Systems (Linux / macOS):
+### 1. Backend Setup
 
 ```bash
-# Create and activate Python virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Clone the private repository
+git clone https://github.com/Qusai7-04/CiteFirst.git
+cd CiteFirst
 
-# Install Python backend dependencies
+# Create and activate a Python virtual environment
+python -m venv .venv
+# On Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# On Linux/macOS:
+# source .venv/bin/activate
+
+# Install backend dependencies
 pip install -r requirements.txt
-
-# Install Next.js frontend dependencies
-npm install
+pip install -r requirements-test.txt
 
 # Configure environment variables
 cp .env.example .env
 ```
 
-### 2. Provider Configuration
-
-Edit `.env` to configure your OpenRouter API key and model:
-
-```dotenv
-# OpenRouter Configuration (Single Supported Provider)
-OPENROUTER_API_KEY=your_actual_key_here
+Edit `.env` and set your OpenRouter API key:
+```env
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
 OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
----
-
-## Running the Application
-
-### Start the Backend API (FastAPI)
-
+Start the backend API server:
 ```bash
 python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### Start the Frontend Web UI (Next.js)
+### 2. Frontend Setup
 
-In a separate terminal:
-
+In a separate terminal window:
 ```bash
+# Install Node dependencies
+npm install
+
+# Start the Next.js development server
 npm run dev
 ```
 
-Open your browser to `http://127.0.0.1:3000`.
+Open `http://127.0.0.1:3000` in your web browser.
 
 ---
 
-## Document Ingestion & Vault Setup
+## Document Ingestion & Vault
 
-CiteFirst operates on user-supplied PDF documents:
+CiteFirst operates on local PDF papers:
 
-1. **Web Interface**: Navigate to `/vault` or `/chat` in the web application and upload PDF papers directly. The system extracts text page-by-page using PyMuPDF, chunks content, and generates embeddings locally.
-2. **Batch Ingestion Script**: Place PDFs in the local `papers/` directory and execute:
+1. **Web Interface**: Upload PDF papers directly via the `/vault` page or within `/chat`. PyMuPDF extracts text page-by-page, chunks into child/parent segments, and indexes embeddings into `./vector_vault/`.
+2. **Batch Upload**: Place PDFs in the `papers/` folder and run:
    ```bash
-   python upload_papers.py
+   python database.py
    ```
-   *(Note: Uploads require the backend API to be running on `127.0.0.1:8000`.)*
-3. **Data Storage**:
-   - Vector collections are stored locally in `./vector_vault/` (ChromaDB).
-   - Document metadata and upload history are tracked in `vault.db` (SQLite).
-   - Both databases are strictly local and ignored by Git.
-
----
-
-## Running Tests and Validation
-
-### Python Backend Test Suite
-
-Run the 98-item pytest test suite (covers provider error handling, retry policies, deterministic logic, vault paths, and evaluation benchmarks):
-
-```bash
-python -m pytest tests/
-```
-
-### Frontend Typechecking, Linting, & Production Build
-
-```bash
-# TypeScript strict type checking
-npx tsc --noEmit
-
-# ESLint code quality audit
-npm run lint
-
-# Next.js production build verification
-npm run build
-```
+3. **Data Privacy**: All PDF text, embeddings, and SQLite metadata remain strictly local on your machine and are excluded from Git.
 
 ---
 
 ## Evaluation Benchmark & Verified Results
 
-CiteFirst includes a canonical 26-question evaluation benchmark (`docs/evaluation/phase4_questions.json`) with signed human evidence sign-offs and answer verdicts.
+CiteFirst was evaluated against its local benchmark corpus of **66 academic research papers** (7,816 chunks).
 
-### Partitioned Results Summary
+### 1. Chunk-Level Relevance Evaluation
 
-| Partition | Total Qs | ACCEPT | PARTIAL | REJECT | Claim Coverage (Covered / Partial / Omitted) | Approved Pages in Context |
+Evaluated using an LLM Grader (`meta-llama/llama-3.1-8b-instruct`) on the 66-paper corpus across **593 chunk-level relevance classifications**:
+
+- **Accuracy**: **0.9848**
+- **Precision**: **0.7000**
+- **Recall**: **0.8235**
+- **F1 Score**: **0.7568**
+
+#### Confusion Matrix (593 Chunk Decisions)
+
+| | Predicted Irrelevant | Predicted Relevant | Total Decisions |
+| :--- | :---: | :---: | :---: |
+| **Actual Irrelevant** | **570** (True Negatives) | **6** (False Positives) | 576 |
+| **Actual Relevant** | **3** (False Negatives) | **14** (True Positives) | 17 |
+| **Total Predictions** | 573 | 20 | **593** |
+
+> [!IMPORTANT]
+> **Understanding Chunk Relevance vs. Answer Correctness**:
+> The high accuracy (98.48%) is driven primarily by the large true-negative denominator (570 correct rejections of irrelevant passages out of 593 total decisions; 570 + 6 + 3 + 14 = 593). This measures the chunk filter's ability to reject distractor passages. **It does NOT represent the accuracy of generated answers.**
+
+### 2. Answer-Accuracy Evaluation (Human Review)
+
+Answer correctness was evaluated across **26 human-reviewed questions** with signed evidence sign-offs and structured verdict forms, partitioned into 22 development questions and a disclosed 4-question pilot:
+
+| Partition | Questions | ACCEPT | PARTIAL | REJECT | Claim Coverage (Covered / Partial / Omitted) | Approved Pages in Context |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Development (Q001–Q022)** | 22 | **2 (9.1%)** | **9 (40.9%)** | **11 (50.0%)** | 14 / 21 / 39 (N=74) | 15 / 22 |
 | **Disclosed Pilot (Q023–Q026)** | 4 | **4 (100.0%)** | **0 (0.0%)** | **0 (0.0%)** | 9 / 0 / 0 (N=9) | 4 / 4 |
-| **Combined Descriptive Total** | **26** | **6 (23.1%)** | **9 (34.6%)** | **11 (42.3%)** | **23 / 21 / 39 (N=83)** | **19 / 26** |
+| **Overall Benchmark Total** | **26** | **6 (23.1%)** | **9 (34.6%)** | **11 (42.3%)** | **23 / 21 / 39 (N=83)** | **19 / 26** |
 
-### Critical Observed Limitations
+#### Key Evaluation Findings
+- **Context Presence vs. Claim Synthesis**: In 19 of 26 questions (73.1%), approved source pages successfully reached the generation context. However, multi-part synthesis requirements caused the generator to miss secondary claims or output cautious abstentions.
+- **Pilot Generalizability Caveat**: The pilot questions (Q023–Q026) were inspected during prompt tuning; their 4/4 acceptance rate is disclosed as an internal pilot and must not be interpreted as an unbiased general holdout rate.
 
-1. **Development vs. Pilot Performance**: On the 22 iterative development questions (Q001–Q022), only **2 of 22 (9.1%)** generated answers received an `ACCEPT` verdict from human evaluation, with 9 receiving `PARTIAL` and 11 `REJECT`. Conversely, all 4 questions in the disclosed pilot partition (Q023–Q026) received `ACCEPT`. As documented in the [Evaluation Report](docs/evaluation/evaluation_report.md), pilot candidates were inspected during query formulation, so the 4/4 pilot success cannot be interpreted as a generalizable holdout rate.
-2. **Context Presence vs. Claim Synthesis**: In 19 of 26 questions, approved answer pages were present in the final generation context passed to the LLM. However, compound reasoning requirements frequently led the generator to omit secondary claims or adopt cautious refusal phrasing despite having supporting passages available.
-3. **Missing Approved Pages**: In 7 questions (`Q005`, `Q006`, `Q008`, `Q009`, `Q011`, `Q020`, `Q022`), the pipeline failed to deliver the approved physical page into the final generation context due to upstream retrieval or reranker cutoffs.
-4. **Citations Require Verification**: Citations emitted in answers reflect retrieved context passages and are not guaranteed to be complete or accurate; development generation achieved only a 2/22 (9.1%) human acceptance rate, and all outputs require independent verification against original source PDFs.
-5. **Corpus & Reproduction Boundaries**: The reported benchmark was evaluated against a local corpus of 66 academic research papers (7,816 chunks) stored in a local ChromaDB vector index and BM25 cache. Under copyright and storage hygiene, PDF source files and binary index caches are excluded from this source repository; a clean clone does not reproduce historical numbers without ingesting the corpus.
+### 3. Historical Ablation Study
 
-For full methodologies, partitioned metrics, and cryptographic provenance, consult:
-- [Pipeline Evaluation & Benchmark Report](docs/evaluation/evaluation_report.md)
-- Canonical Benchmark: [`docs/evaluation/phase4_questions.json`](docs/evaluation/phase4_questions.json)
-- Authoritative Signed Evidence Forms & Frozen Worksheets: Preserved in private archive with verified SHA-256 hashes recorded in [`docs/evaluation/evaluation_report.md`](docs/evaluation/evaluation_report.md).
+The table below reflects the progressive ablation findings from the initial research study by Sushant Shekhar Sinha, Kanan Gupta, and Qusai:
+
+| Configuration | Accuracy | Precision | Recall | F1 Score | Notes |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Dense-only baseline** (no logic) | 0.938 | 0.390 | 0.760 | 0.514 | High noise, low precision |
+| **Hybrid dense + BM25 / RRF** | 0.885 | 0.380 | 0.860 | 0.525 | Higher recall, broader pool |
+| **Hybrid + Cross-Encoder** (static thresholds) | 0.910 | 0.480 | 0.720 | 0.576 | Reranker sharpens top ranks |
+| **Full Logic + Chunk-level verification** | 0.974 | 0.500 | 0.670 | 0.572 | Early gate reduced true positives |
+| **Full Logic + Pre-flight combined check** | **0.985** | **0.700** | **0.820** | **0.760** | Final architecture; cuts false positives |
+
+*(Note: Baseline ablations conducted during early exploratory development are not directly comparable to later frozen-protocol evaluations.)*
+
+For detailed protocols, cryptographic manifests, and signed verdict sheets, see the [Pipeline Evaluation & Benchmark Report](docs/evaluation/evaluation_report.md) and [`docs/evaluation/phase4_questions.json`](docs/evaluation/phase4_questions.json).
 
 ---
 
-## Security & Operational Scope
+## Development & Test Commands
 
-- **Local-Only Single-User Application**: CiteFirst is designed for local desktop and workstation use. The FastAPI backend binds strictly to `127.0.0.1`.
-- **Unauthenticated API**: The API contains no user authentication or multi-tenant access control. It must **not** be exposed directly to untrusted public networks without an authenticating reverse proxy.
-- **Privacy & Secret Protection**: No external analytics or telemetry are transmitted. API keys are loaded via local `.env` and excluded from source control.
+```bash
+# Run full backend test suite (offline / mock-enabled)
+python -m pytest tests/
+
+# Compile Python source
+python -m compileall -q api.py database.py logic_engine.py providers.py settings_config.py
+
+# Frontend linting
+npm run lint
+
+# Frontend TypeScript type check
+npx tsc --noEmit
+
+# Production Next.js build
+npm run build
+```
 
 ---
 
-## Lineage & Permissions
- 
-- **Lineage**: CiteFirst originated from the CRAG-Pipeline group project created at Manipal Institute of Technology by **Sushant Shekhar Sinha**, **Kanan Gupta**, and **Qusai**. See [`NOTICE.md`](NOTICE.md) for full historical credit.
-- **Contributor Permissions**: Written permission has been received from both original co-authors (Sushant Shekhar Sinha and Kanan Gupta) to copy, modify, redistribute, and publicly release their original contributions as part of CiteFirst with authorship credit.
-- **Repository Status**: CiteFirst intentionally includes no root `LICENSE` file. All third-party research papers, model weights, and upstream library dependencies remain governed by their respective copyright holders and licenses.
+## Operational Scope & Security
+
+- **Local Desktop Workstation Target**: CiteFirst binds strictly to `127.0.0.1:8000` and `127.0.0.1:3000`.
+- **Single-User Architecture**: The FastAPI service does not implement multi-user authentication or multi-tenant database isolation. It should not be exposed to public networks without an authenticating reverse proxy.
+- **Corpus & Reproduction Boundaries**: Under copyright and storage hygiene, source PDF papers and vector store files are not checked into Git. Ingest your own PDFs to initialize the local vector vault.
+
+---
+
+## Lineage & Attribution
+
+- **Lineage**: CiteFirst evolved from a university research project on Corrective RAG at Manipal Institute of Technology developed by **Sushant Shekhar Sinha**, **Kanan Gupta**, and **Qusai**. See [`NOTICE.md`](NOTICE.md) for full historical contributor attribution.
+- **Licensing**: CiteFirst intentionally does not include a root project `LICENSE` file. All rights are reserved by the authors, with upstream libraries and model weights governed by their respective licenses (ChromaDB, PyMuPDF, SentenceTransformers, Hugging Face).

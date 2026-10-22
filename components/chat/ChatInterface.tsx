@@ -74,8 +74,10 @@ export default function ChatInterface() {
   }, [messages, activeDocument]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: loading ? "auto" : "smooth" });
+    }
+  }, [messages, loading]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -119,7 +121,7 @@ export default function ChatInterface() {
 
     html2pdf().set({
       margin: 10,
-      filename: `crag_chat_export_${Date.now()}.pdf`,
+      filename: `citefirst_chat_export_${Date.now()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -321,7 +323,7 @@ export default function ChatInterface() {
           {messages.length === 0 && (
             <div style={{ textAlign: "center", paddingTop: 100, color: "var(--text-muted)" }}>
               <div style={{ fontSize: "4rem", marginBottom: 16 }}>🧠</div>
-              <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text-faint)", marginBottom: 8 }}>Ask the CRAG Pipeline</h2>
+              <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text-faint)", marginBottom: 8 }}>Ask CiteFirst</h2>
               {activeDocument ? (
                 <p style={{ color: "var(--accent)" }}>Active Document: {activeDocument}</p>
               ) : (
@@ -334,7 +336,7 @@ export default function ChatInterface() {
             <div key={msg.id}>
               <ChatBubble 
                 message={msg} 
-                onEdit={(newContent) => handleEdit(msg.id, newContent)}
+                onEdit={(_id, newContent) => handleEdit(msg.id, newContent)}
                 onRegenerate={() => handleRegenerate(msg.id)}
               />
               {msg.role === "assistant" && msg.pipeline && <PipelineStepsBubble pipeline={msg.pipeline} />}

@@ -225,11 +225,11 @@ export default function ChatInterface() {
   };
 
   const stepLabels: Record<string, string> = {
-    fetching: "Phase 1: Hybrid retrieval (Dense + BM25 + RRF)…",
-    reranking: "Phase 2: BGE Reranker scoring top chunks…",
+    fetching: "Hybrid retrieval (Dense + BM25 + RRF)…",
+    reranking: "BGE Reranker scoring top chunks…",
     grading: "Tri-state grading (Correct / Ambiguous / Incorrect)…",
-    resolving: "Phase 3: Pre-flight combined relevance check…",
-    generating: "Phase 4: Generating answer with LLM…",
+    resolving: "Pre-flight combined relevance check…",
+    generating: "Generating citation-grounded answer…",
   };
 
   return (

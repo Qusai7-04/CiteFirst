@@ -17,5 +17,5 @@ Subsequent design, citation-grounding architecture, corrective retrieval-augment
 
 - Written permission has been received from both co-authors, Sushant Shekhar Sinha and Kanan Gupta, permitting Qusai to use, modify, redistribute, and publicly release their original CRAG-Pipeline contributions as part of CiteFirst, provided that their original authorship is credited.
 - Original authorship and attribution are preserved in project records and documentation.
-- The original CRAG-Pipeline repository did not include an identified SPDX project license. Selection of the exact SPDX license for CiteFirst's original codebase remains under review to ensure full compatibility with integrated dependencies (including PyMuPDF's AGPL obligations).
+- The original CRAG-Pipeline repository did not include an identified SPDX project license. Selection of the exact SPDX license for CiteFirst's original codebase remains under review to ensure full compatibility with integrated dependencies (including PyMuPDF's AGPL obligations). There is currently no root `LICENSE` file installed; formal license selection remains pending until finalized.
 - Third-party research papers, pre-trained model weights, and external software dependencies remain under their respective copyright and distribution terms.

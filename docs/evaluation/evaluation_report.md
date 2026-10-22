@@ -47,7 +47,7 @@ The evaluation operates on two distinct, phase-neutral datasets serving specific
 
 | Dataset | Path | Records | Role |
 |---|---|:---:|---|
-| **Canonical Benchmark** | [`docs/evaluation/phase4_questions.json`](phase4_questions.json) | 26 | Canonical question set for pipeline evaluation with human-signed claim supports. |
+| **Canonical Benchmark** | [`docs/evaluation/phase4_questions.json`](phase4_questions.json) | 26 | Canonical 26-question benchmark set. Q001–Q018 contain verified question-level evidence (`relevant_evidence`); Q019–Q026 contain itemized claim supports (`claim_supports`). All 26 questions have independent signed answer verdicts. |
 | **Historical Baseline** | [`reviewed_dataset.json`](../../reviewed_dataset.json) | 18 | Preserved for baseline retrieval comparison against historical Phase 3 measurements. |
 
 ---
@@ -76,7 +76,9 @@ For Q015 (*RAG architectures and training*), target paper `2005.11401v4.pdf` pla
 
 ## 4. End-to-End Generation & Human Verdict Audit
 
-Live generation was executed against the single active provider OpenRouter using `meta-llama/llama-3.3-70b-instruct` (frozen run documented in [`docs/evaluation/phase4_generation_worksheet.json`](phase4_generation_worksheet.json)). All 26 outputs were independently evaluated and signed by reviewer Qusai.
+Live generation was executed against the single active provider OpenRouter using `meta-llama/llama-3.3-70b-instruct`.
+- **Frozen Generation Worksheet (`phase4_generation_worksheet.json`):** Captures the exact prompt settings, model ID, raw outputs, latency, tokens, and context at execution time. Fields marked `PENDING_HUMAN_REVIEW` reflect generation-time audit status before human scoring, not unfinished work.
+- **Completed Human Verdicts (`phase4_human_answer_verdicts.json`):** Records completed human evaluation across all 26 outputs independently evaluated and signed by reviewer Qusai on 2026-10-21 against the authoritative signed verdict form.
 
 ### 4.1 Grounding Levels Disaggregation
 
@@ -119,24 +121,35 @@ Detailed analysis of the 20 non-accepted answers revealed four distinct failure 
 
 ## 6. Cryptographic Artifact Provenance & Private Archive
 
-Authoritative signed evaluation artifacts and frozen historical records are durably preserved outside Git history in `C:\Users\user\CiteFirst_Private_Archive`.
+Authoritative signed evaluation artifacts and frozen historical records are durably preserved outside Git history in `CiteFirst_Private_Archive/` (an offline, durable private archive directory).
 
-| Artifact Description | Tracked / Preserved Location | Authoritative SHA-256 Hash |
-|---|---|---|
-| **Authoritative Signed Answer Verdict Form** | `phase4_human_answer_verdict_form.md` | `172bb3a46973534430aa2c2e909cac76a76d0801c2618dbd22ca80a152ceeb08` |
-| **Authoritative Signed Evidence Sign-Off Form** | `phase4_human_evidence_signoff.md` | `4408fd4d2b0be0c9a030c02a34ef99984e3396bd5a468eaa0383b13b25c0b84d` |
-| **Normalized Evidence Sign-Off Form** | `docs/evaluation/phase4_human_evidence_signoff.md` | `1ce6dff1db040bc1d7ff1b171bf8c2e680a6d5102ffc4ae6f5ca0bfabefadcc0` |
-| **Canonical 26-Question Benchmark** | [`docs/evaluation/phase4_questions.json`](phase4_questions.json) | `a9effa8fab40b3b2c3cf8a255f94395de84f24a9610b7fe46965b0392d0de25a` |
-| **Historical 18-Question Baseline (LF)** | [`reviewed_dataset.json`](../../reviewed_dataset.json) | `11b467995f423495e53207539c20764cf8d531b71a3162de7b5c8a3d57b6417b` |
-| **Historical 18-Question Baseline (CRLF)** | [`reviewed_dataset.json`](../../reviewed_dataset.json) | `395b11567576562e5528c52801f0c8da79f86cbd66fc8e7ec0e1dad8ea847487` |
-| **Frozen OpenRouter Generation Worksheet** | [`docs/evaluation/phase4_generation_worksheet.json`](phase4_generation_worksheet.json) | `a8ee8db62c82e04368ddb1d1f0f4b36021d743cfec0f3a61f26e2eef297808fb` |
-| **Structured Human Answer Verdicts** | [`docs/evaluation/phase4_human_answer_verdicts.json`](phase4_human_answer_verdicts.json) | `abdf710a379a6136a7ea5ee24ba8919cf62b322304d989f688009c5cf152caae` |
-| **66 Indexed Papers (Manifest Digest)** | `papers/` manifest | `4035c42aeb626527ef714fd3105fdab3157a095bae64f782d84add65558e2583` |
+### 6.1 Checksums & Verified Hashes
+
+| Artifact Description | Location / Mode | Git Blob LF SHA-256 | Working Copy (CRLF) SHA-256 | Bytes (LF / CRLF) |
+|---|---|---|---|---|
+| **Frozen Generation Worksheet** | [`docs/evaluation/phase4_generation_worksheet.json`](phase4_generation_worksheet.json) | `7a21710b9172bc791af1d922d54589b79f23a60aed36b2fb1faf8efa6b084914` | `0027f9d3697587b3e036bf4d280bba9e58c4e228f1bae5fe53f8943a304167bb` | 342,895 / 345,467 |
+| **Structured Human Answer Verdicts** | [`docs/evaluation/phase4_human_answer_verdicts.json`](phase4_human_answer_verdicts.json) | `775af36885de9d90dd5ecc6863697f2eb6271a12d827d08961741d17e5bb7850` | `2eba4bee92fefe8dfd73fe89a2424bc4928c073a83d3afee79279d6e035d82df` | 82,934 / 84,357 |
+| **Canonical 26-Question Benchmark** | [`docs/evaluation/phase4_questions.json`](phase4_questions.json) | `e5abc5ffb5c10f7c6ffc8e926c294ae035a6143e2cd1eeb279b0b47afab97ce1` | `a9effa8fab40b3b2c3cf8a255f94395de84f24a9610b7fe46965b0392d0de25a` | 118,293 / 119,728 |
+| **Historical 18-Question Baseline** | [`reviewed_dataset.json`](../../reviewed_dataset.json) | `11b467995f423495e53207539c20764cf8d531b71a3162de7b5c8a3d57b6417b` | `395b11567576562e5528c52801f0c8da79f86cbd66fc8e7ec0e1dad8ea847487` | 128,112 / 128,903 |
+| **66 Indexed Papers (Manifest Digest)** | `papers/` manifest | `4035c42aeb626527ef714fd3105fdab3157a095bae64f782d84add65558e2583` | `4035c42aeb626527ef714fd3105fdab3157a095bae64f782d84add65558e2583` | — |
+
+### 6.2 Authoritative Signed Forms Preserved in Private Archive
+
+| Form Description | Archive Filename | Authoritative SHA-256 Hash | Bytes |
+|---|---|---|---|
+| **Authoritative Signed Answer Verdict Form** | `phase4_human_answer_verdict_form.md` | `172bb3a46973534430aa2c2e909cac76a76d0801c2618dbd22ca80a152ceeb08` | 143,143 |
+| **Authoritative Signed Evidence Sign-Off Form** | `phase4_human_evidence_signoff.md` | `4408fd4d2b0be0c9a030c02a34ef99984e3396bd5a468eaa0383b13b25c0b84d` | 34,354 |
+| **Normalized Evidence Sign-Off Form** | `docs/evaluation/phase4_human_evidence_signoff.md` | `f23f20587167017c3f74642f8f00afee88bf91f89f0055170740847fbbcf413b` (LF) / `b3354f08946b918c26b35c0b627dfcdec2379626bb02aba1f5c16239ab107d5f` (CRLF) | 36,503 |
+
+> [!NOTE]
+> **Reconciliation of Evaluated Checksums:**
+> Earlier intermediate drafts of this report listed placeholder hashes `a8ee8db6...` and `abdf710a...` for the worksheet and verdict JSON files. Those values matched neither checked-in Git LF bytes nor local Windows CRLF bytes. Direct byte inspection reconciles that the checked-in Git blobs possess LF SHA-256 hashes `7a21710b...` and `775af368...`, and that local CRLF working copies (`0027f9d3...` and `2eba4bee...`) are 100% semantically equal when parsed as JSON (`git == wt == archive` is `True`).
 
 ---
 
 ## 7. Limitations & Reproducibility Guidelines
 
 1. **Non-Exhaustive Relevance Annotations:** The 16 signed secondary relevance judgments cover evaluated candidate pairs only. They do not constitute an exhaustive corpus-wide binary labeling.
-2. **Partition Integrity:** Development questions (Q001–Q022) were used iteratively; Disclosed Pilot questions (Q023–Q026) had candidate pools inspected before generation. Neither partition represents an untouched, blind test split.
-3. **Routine Run Output Protection:** The routine evaluation runner [`scripts/run_real_pipeline_evaluation.py`](../../scripts/run_real_pipeline_evaluation.py) writes new evaluation runs to `evaluation_results/live_generation_worksheet.json` (git-ignored) to protect the frozen benchmark worksheet [`docs/evaluation/phase4_generation_worksheet.json`](phase4_generation_worksheet.json) from accidental overwriting.
+2. **Partition Integrity & Pilot Disclosure:** Development questions (Q001–Q022) were used iteratively. While `docs/evaluation/phase4_split_manifest.json` originally designated Q023–Q026 as a reserved held-out split, candidate pools were inspected during question formulation; Q023–Q026 are therefore disclosed as an exposed pilot, not a blind holdout.
+3. **Corpus & Index Exclusions:** The reported benchmark was evaluated against a 66-paper academic corpus (7,816 chunks) stored in a local ChromaDB index and BM25 cache. In keeping with copyright and repository size hygiene, PDF source files and binary index caches are excluded from this source tree. A fresh git clone will not reproduce historical retrieval numbers without ingesting the corpus into a local vault.
+4. **Routine Run Output Protection:** The routine evaluation runner [`scripts/run_real_pipeline_evaluation.py`](../../scripts/run_real_pipeline_evaluation.py) writes new evaluation runs to `evaluation_results/live_generation_worksheet.json` (git-ignored) to protect the frozen benchmark worksheet [`docs/evaluation/phase4_generation_worksheet.json`](phase4_generation_worksheet.json) from accidental overwriting.

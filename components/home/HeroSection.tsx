@@ -26,7 +26,7 @@ export default function HeroSection() {
       >
         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 18px", background: "var(--accent-bg)", border: "1px solid var(--accent-border)", borderRadius: 999, color: "var(--accent)", fontSize: 13, marginBottom: 28 }}>
           <Sparkles style={{ width: 14, height: 14 }} />
-          Corrective RAG • Hybrid Retrieval • 4-Phase Pipeline
+          Corrective RAG • Hybrid Retrieval • Multi-Stage Grounding
         </div>
 
         <h1 style={{ fontSize: "clamp(3rem, 8vw, 5.5rem)", fontWeight: 900, lineHeight: 1.1, marginBottom: 24, letterSpacing: "-0.03em" }}>
@@ -38,7 +38,7 @@ export default function HeroSection() {
 
         <p style={{ fontSize: "1.2rem", color: "var(--text-muted)", marginBottom: 40, maxWidth: 800, margin: "0 auto 40px", lineHeight: 1.7 }}>
           Hybrid Retrieval → BGE Rerank → Tri-State Grade → Combined Check → Generate Answer.<br />
-          A self-correcting 4-phase pipeline with pre-flight relevance verification.
+          A citation-grounded self-correcting pipeline with pre-flight relevance verification.
         </p>
 
         <div style={{ display: "flex", maxWidth: 640, margin: "0 auto 40px", gap: 12 }}>

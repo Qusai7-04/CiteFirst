@@ -5,6 +5,7 @@ import { Send, Loader2, Paperclip, MessageSquare, Plus, Download, Copy, Trash2, 
 import type { Message } from "@/types/chat";
 import { useQuery } from "@/hooks/useQuery";
 import { useChatHistory } from "@/hooks/useChatHistory";
+import { api } from "@/lib/api";
 import ChatBubble from "./ChatBubble";
 import SourceCard from "./SourceCard";
 import PipelineStepsBubble from "./PipelineStepsBubble";
@@ -81,18 +82,14 @@ export default function ChatInterface() {
     if (!file) return;
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const res = await fetch("http://localhost:8000/api/vault/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await api.upload<{ filename: string; size?: number; indexed?: boolean; warning?: string }>(
+        "/api/vault/upload",
+        file
+      );
+      if (data?.filename) {
         setActiveDocument(data.filename);
-        
+
         // If no active session, create one
         if (!activeSessionId) {
           createSession(data.filename);
@@ -104,6 +101,7 @@ export default function ChatInterface() {
       console.error("Upload failed", err);
     } finally {
       setUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -225,11 +223,11 @@ export default function ChatInterface() {
   };
 
   const stepLabels: Record<string, string> = {
-    fetching: "Phase 1: Hybrid retrieval (Dense + BM25 + RRF)…",
-    reranking: "Phase 2: BGE Reranker scoring top chunks…",
+    fetching: "Hybrid retrieval (Dense + BM25 + RRF)…",
+    reranking: "BGE Reranker scoring top chunks…",
     grading: "Tri-state grading (Correct / Ambiguous / Incorrect)…",
-    resolving: "Phase 3: Pre-flight combined relevance check…",
-    generating: "Phase 4: Generating answer with LLM…",
+    resolving: "Pre-flight combined relevance check…",
+    generating: "Generating citation-grounded answer…",
   };
 
   return (

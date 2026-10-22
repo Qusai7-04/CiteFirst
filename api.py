@@ -21,7 +21,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from settings_config import DEFAULTS, load_settings, save_settings
-from providers import selected_provider
 
 log = logging.getLogger(__name__)
 
@@ -29,7 +28,10 @@ app = FastAPI(title="CRAG API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,8 +71,6 @@ except Exception as e:
     log.warning("CRAG modules unavailable; stub responses enabled: %s", e)
 
 from evaluator import run_ml_evaluation
-
-log.info("LLM provider: %s", selected_provider())
 
 
 # ── Pydantic models ──────────────────────────────────────────────────────────

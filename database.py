@@ -6,6 +6,7 @@ import json
 import logging
 import tempfile
 import hashlib
+import time
 from pathlib import Path
 from threading import Lock
 import numpy as np
@@ -351,12 +352,18 @@ def process_and_save_pdf(pdf_path):
 
 # ── Retrieval ──────────────────────────────────────────────────────────────────
 
-def search_vault(query, n_results=10, domain_filter=None, file_filter=None):
+def search_vault(query, n_results=10, domain_filter=None, file_filter=None,
+                 trace=None, candidate_source="hybrid"):
     """
     Hybrid Search (Dense + BM25) + RRF + Parent expansion.
     Returns parent chunks in documents[], child_text in metadatas[] for scoring.
     Restricts retrieval to file_filter when supplied by a request.
     """
+    if candidate_source not in ("hybrid", "dense-only", "bm25-only"):
+        raise ValueError("Unknown candidate source")
+    if candidate_source == "bm25-only" and not BM25_AVAILABLE:
+        raise RuntimeError("BM25 is unavailable")
+    started = time.perf_counter()
     fetch_n = n_results * 3
     distance_threshold = load_settings()["DISTANCE_THRESHOLD"]
 
@@ -384,6 +391,7 @@ def search_vault(query, n_results=10, domain_filter=None, file_filter=None):
     raw_docs      = results["documents"][0]
     raw_metas     = results["metadatas"][0]
     raw_distances = results["distances"][0]
+    dense_seconds = time.perf_counter() - started
 
     # Content can repeat across pages. Keep each chunk's identity with its text.
     def key_for(doc, meta):
@@ -398,7 +406,8 @@ def search_vault(query, n_results=10, domain_filter=None, file_filter=None):
 
     # BM25 sparse retrieval
     bm25_ranking = []
-    if BM25_AVAILABLE:
+    bm25_error = None
+    if BM25_AVAILABLE and candidate_source != "dense-only":
         try:
             bm25, corpus, bm25_metas = _load_or_build_bm25()
             if bm25 and corpus:
@@ -419,31 +428,70 @@ def search_vault(query, n_results=10, domain_filter=None, file_filter=None):
                     if key not in doc_info:
                         doc_info[key] = (meta, distance_threshold)
         except Exception as e:
+            if candidate_source == "bm25-only":
+                raise
+            bm25_error = type(e).__name__
             log.warning("BM25 search failed: %s", e)
 
-    all_rankings = [r for r in [dense_ranking, bm25_ranking] if r]
+    if candidate_source == "bm25-only" and not bm25_ranking:
+        raise RuntimeError("BM25 returned no candidates")
+    bm25_seconds = time.perf_counter() - started - dense_seconds
+
+    all_rankings = [r for r in ([dense_ranking] if candidate_source == "dense-only"
+                                 else [bm25_ranking] if candidate_source == "bm25-only"
+                                 else [dense_ranking, bm25_ranking]) if r]
     if len(all_rankings) > 1:
         merged_ranking = _reciprocal_rank_fusion(all_rankings)
         log.info(f"  [Hybrid] Dense={len(dense_ranking)} | BM25={len(bm25_ranking)} → merged={len(merged_ranking)}")
     else:
-        merged_ranking = dense_ranking
+        merged_ranking = all_rankings[0] if all_rankings else []
         log.info(f"  [Dense-only] Retrieved {len(dense_ranking)} chunks")
+    fusion_seconds = time.perf_counter() - started - dense_seconds - bm25_seconds
 
     filtered_docs  = []
     filtered_metas = []
 
+    if trace is not None:
+        def identity(key):
+            meta = doc_info[key][0]
+            return {"source_filename": meta.get("source"), "page": (
+                meta["page_index"] + 1 if type(meta.get("page_index")) is int
+                and meta["page_index"] >= 0 else None), "chunk_id": meta.get("chunk_id"),
+                "parent_id": meta.get("parent_id")}
+
+        trace.update(candidate_source=candidate_source, fetch_n=fetch_n,
+                     bm25_error=bm25_error,
+                     dense=[identity(k) for k in dense_ranking],
+                     bm25=[identity(k) for k in bm25_ranking],
+                     fused=[identity(k) for k in merged_ranking],
+                     distance_filter=[], expanded=[],
+                     timing_seconds={"dense": dense_seconds, "bm25": bm25_seconds,
+                                     "fusion": fusion_seconds})
+
+    filter_started = time.perf_counter()
     for doc_key in merged_ranking[:fetch_n]:
         doc = doc_key[0]
         meta, dist = doc_info.get(doc_key, ({}, distance_threshold))
         if dist <= distance_threshold:
+            if trace is not None:
+                trace["distance_filter"].append(identity(doc_key))
             expanded_doc, expanded_meta = _expand_to_parent(doc, meta)
             filtered_docs.append(expanded_doc)
             filtered_metas.append(expanded_meta)
+            if trace is not None:
+                trace["expanded"].append({"source_filename": expanded_meta.get("source"),
+                    "page": (expanded_meta["page_index"] + 1 if
+                             type(expanded_meta.get("page_index")) is int and
+                             expanded_meta["page_index"] >= 0 else None),
+                    "chunk_id": expanded_meta.get("chunk_id"),
+                    "parent_id": expanded_meta.get("parent_id")})
         else:
             src = meta.get("source", "Unknown")
             log.info(f"  [pre-filter] Dropped '{src}' — distance={dist:.3f} > {distance_threshold}")
 
     log.info(f"  [DB] {len(merged_ranking)} merged → {len(filtered_docs)} passed pre-filter")
+    if trace is not None:
+        trace["timing_seconds"]["filter_expand"] = time.perf_counter() - filter_started
 
     results["documents"][0] = filtered_docs
     results["metadatas"][0] = filtered_metas

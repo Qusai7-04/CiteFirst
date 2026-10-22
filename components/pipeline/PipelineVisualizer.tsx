@@ -6,11 +6,11 @@ import { streamQuery, type SSEEvent } from "@/lib/api";
 import { STATUS_COLORS } from "@/lib/constants";
 
 const PIPELINE_STAGES = [
-  { id: "fetching", label: "Phase 1: Hybrid Retrieval", icon: Search, desc: "Dense + BM25 + RRF fusion from ChromaDB" },
-  { id: "reranking", label: "Phase 2: BGE Reranker → Top 10", icon: Layers, desc: "BGE cross-encoder scores and reranks chunks" },
+  { id: "fetching", label: "Hybrid Retrieval", icon: Search, desc: "Dense + BM25 + RRF fusion from ChromaDB" },
+  { id: "reranking", label: "BGE Cross-Encoder Reranking", icon: Layers, desc: "BGE cross-encoder scores and reranks chunks" },
   { id: "grading", label: "Tri-State Grading", icon: Filter, desc: "Correct (≥0.55) / Ambiguous (≥0.25) / Incorrect" },
-  { id: "resolving", label: "Phase 3: Pre-Flight Check", icon: Shield, desc: "Combined relevance verification" },
-  { id: "generating", label: "Phase 4: Generate Answer", icon: MessageSquare, desc: "Synthesize verified context into cited answer" },
+  { id: "resolving", label: "Pre-Flight Verification", icon: Shield, desc: "Combined relevance verification across context" },
+  { id: "generating", label: "Grounded Generation", icon: MessageSquare, desc: "Synthesize verified context into cited answer" },
 ];
 
 type StageStatus = "idle" | "active" | "done" | "skip";

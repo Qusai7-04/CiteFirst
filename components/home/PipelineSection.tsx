@@ -4,12 +4,12 @@ import { motion, useInView } from "motion/react";
 import { Search, Layers, Filter, Award, CheckCircle, MessageCircle } from "lucide-react";
 
 const steps = [
-  { icon: Search, title: "Phase 1: Hybrid Retrieval", desc: "Dense embedding + BM25 sparse search with Reciprocal Rank Fusion. Fetches 30 chunks from ChromaDB." },
-  { icon: Layers, title: "Phase 2: BGE Reranker", desc: "Academic-grade BGE cross-encoder reranks and scores all chunks with sigmoid scoring." },
-  { icon: Filter, title: "Tri-State Grading", desc: "Grade each chunk: Correct (≥0.55), Ambiguous (≥0.25), or Incorrect (<0.25) on sigmoid scale." },
-  { icon: Award, title: "Ambiguous Resolution", desc: "Extract best sentence from ambiguous chunks, run supplemental search, rescue or discard." },
-  { icon: CheckCircle, title: "Phase 3: Pre-Flight Check", desc: "Combined relevance check ensures the full context set answers the query. Cuts FP without hurting TP." },
-  { icon: MessageCircle, title: "Phase 4: Adaptive Fallback", desc: "Rewrite query on failure, bendy mode for partial matches, controlled LLM generation." },
+  { icon: Search, title: "Stage 1: Hybrid Retrieval", desc: "Dense embedding + BM25 sparse search with Reciprocal Rank Fusion. Fetches 30 chunks from ChromaDB." },
+  { icon: Layers, title: "Stage 2: Cross-Encoder Reranking", desc: "Academic-grade BGE cross-encoder reranks and scores all chunks with sigmoid scoring." },
+  { icon: Filter, title: "Stage 3: Tri-State Grading", desc: "Grade each chunk: Correct (≥0.55), Ambiguous (≥0.25), or Incorrect (<0.25) on sigmoid scale." },
+  { icon: Award, title: "Stage 4: Ambiguous Resolution", desc: "Extract best sentence from ambiguous chunks, run supplemental search, rescue or discard." },
+  { icon: CheckCircle, title: "Stage 5: Pre-Flight Verification", desc: "Combined relevance check ensures the full context set answers the query. Cuts FP without hurting TP." },
+  { icon: MessageCircle, title: "Stage 6: Adaptive Generation", desc: "Adaptive context selection with citations, fallback routing, and controlled LLM generation." },
 ];
 
 export default function PipelineSection() {
@@ -21,7 +21,7 @@ export default function PipelineSection() {
       <motion.div initial={{ opacity: 0, y: 30 }} animate={inView ? { opacity: 1, y: 0 } : {}} transition={{ duration: 0.6 }} style={{ textAlign: "center", marginBottom: 60 }}>
         <p style={{ color: "var(--accent)", fontFamily: "monospace", fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 12 }}>How It Works</p>
         <h2 style={{ fontSize: "2.5rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>The CRAG Pipeline</h2>
-        <p style={{ color: "var(--text-muted)", fontSize: "1.1rem", maxWidth: 520, margin: "0 auto" }}>Four phases of self-correcting retrieval, from hybrid fetch to verified answer.</p>
+        <p style={{ color: "var(--text-muted)", fontSize: "1.1rem", maxWidth: 520, margin: "0 auto" }}>Six functional stages of self-correcting retrieval, from hybrid fetch to verified answer.</p>
       </motion.div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 20, maxWidth: 1100, width: "100%" }}>

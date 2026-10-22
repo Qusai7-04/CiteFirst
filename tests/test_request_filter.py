@@ -21,11 +21,9 @@ def test_concurrent_filters_propagate_through_pipeline(monkeypatch):
     fake_db = SimpleNamespace(search_vault=search, DOMAIN_KEYWORDS={},
                               check_vault_schema=lambda: "new")
     monkeypatch.setitem(sys.modules, "database", fake_db)
-    monkeypatch.setitem(sys.modules, "dotenv", SimpleNamespace(load_dotenv=lambda: None))
-    monkeypatch.setitem(sys.modules, "groq", SimpleNamespace(Groq=lambda **kwargs: object()))
     monkeypatch.setitem(sys.modules, "sentence_transformers",
                         SimpleNamespace(CrossEncoder=lambda *args: object()))
-    monkeypatch.setenv("GROQ_API_KEY", "unit-test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "unit-test-key")
     spec = importlib.util.spec_from_file_location("logic_engine_filter_test", "logic_engine.py")
     engine = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(engine)

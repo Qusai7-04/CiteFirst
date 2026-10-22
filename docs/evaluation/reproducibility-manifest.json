@@ -2,20 +2,27 @@
   "manifest_version": "1.1.0",
   "date_created": "2026-10-19T19:18:27.453426Z",
   "code_commit": "50e182c4197f3eeb3f1203942424683c2cd7c60b",
-  "authoritative_golden_dataset": {
-    "path": "golden_dataset.json",
-    "records": 18,
-    "sha256": "5ee6866f05beba02edbe04321543d5a6aa9d30dbfaba0fecc219d9c6328754ab"
-  },
-  "reviewed_draft_dataset": {
-    "path": "reviewed_dataset.draft.json",
-    "records": 18,
-    "sha256": "38ce02f9c14ca29505ea55196063f061ad5842ab550c44e0a4199e27c1b2fbff"
+  "canonical_phase4_dataset": {
+    "path": "docs/evaluation/phase4_questions.json",
+    "records": 26,
+    "sha256": "a9effa8fab40b3b2c3cf8a255f94395de84f24a9610b7fe46965b0392d0de25a",
+    "partitions": {"development": 22, "disclosed_pilot": 4}
   },
   "reviewed_dataset": {
     "path": "reviewed_dataset.json",
     "records": 18,
     "sha256": "395b11567576562e5528c52801f0c8da79f86cbd66fc8e7ec0e1dad8ea847487"
+  },
+  "historical_datasets": {
+    "golden_dataset": {
+      "archived_location": "private_archive/golden_dataset.json",
+      "records": 18,
+      "sha256": "5ee6866f05beba02edbe04321543d5a6aa9d30dbfaba0fecc219d9c6328754ab",
+      "note": "Unverified synthetic Phase 1 draft; superseded by human-reviewed dataset."
+    },
+    "reviewed_draft_dataset": {
+      "note": "Consolidated into reviewed_dataset.json (confirmed byte-identical)."
+    }
   },
   "corpus_manifest": {
     "directory": "papers",

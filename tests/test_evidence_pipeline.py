@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 def test_reranking_preserves_page_and_chunk_id(monkeypatch):
     monkeypatch.setitem(sys.modules, "dotenv", SimpleNamespace(load_dotenv=lambda: None))
-    monkeypatch.setitem(sys.modules, "groq", SimpleNamespace(Groq=lambda **kwargs: object()))
     monkeypatch.setitem(sys.modules, "sentence_transformers", SimpleNamespace(CrossEncoder=lambda *args: object()))
     monkeypatch.setitem(sys.modules, "database", SimpleNamespace(
         search_vault=lambda *args, **kwargs: None, DOMAIN_KEYWORDS={},

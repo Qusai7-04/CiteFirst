@@ -15,11 +15,16 @@ vector_vault*/
 papers/
 *.pdf
 *.sqlite3
+vault.db
+*.db
 
 # ── Generated Evaluation Output ─────────────────────────
 confusion_matrix_*.png
 metrics_chart_*.png
 public/loading.mp4
+VALIDATION_LOG.txt
+MANIFEST.txt
+*.patch
 
 # ── Node / Next.js ──────────────────────────────────────
 node_modules/
@@ -57,7 +62,6 @@ bm25_corpus.json
 .code-review-graph/
 .claude/
 .agents/
-GEMINI.md
 CLAUDE.md
 .cursorrules
 .windsurfrules
@@ -67,10 +71,6 @@ PHASE*_CLAUDE_PROMPT*
 CLAUDE_*PROMPT*
 GEMINI_*PROMPT*
 GEMINI_CITEFIRST_*
-*CHANGELOG_FOR_REVIEW*
-*REVIEW_FINDINGS*
-*REVIEW_WORKSHEET*
-CANDIDATE_REVIEW_WORKSHEET*
+CiteFirst_*PROMPT*
 *.zip
-_zip_review/
 scratch/

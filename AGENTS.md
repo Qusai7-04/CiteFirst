@@ -32,18 +32,14 @@ Never cut: validation at trust boundaries, error handling that prevents data los
 ## Project: CiteFirst
 A citation-grounded RAG app for answering questions across research papers.
 
-- Phase 1 is repository setup only: commit the existing project unchanged, add Ponytail and code-review-graph, run the review. Do not modify application code.
 - Never commit secrets, PDFs, the vector store, or build folders.
 - One change at a time, and keep diffs small.
+- Clean code over superfluous abstractions; deletion beats addition.
 
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+When the `code-review-graph` MCP server is available, use its tools to inspect structural context:
 
 ### When to use graph tools FIRST
 

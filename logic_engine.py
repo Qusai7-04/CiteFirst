@@ -44,7 +44,10 @@ PROJECTED OUTCOME: P≈0.78, R≈0.64, F1≈0.70
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
+from collections.abc import Callable
+import os
 import sys
+import re
 import math
 import logging
 from threading import Lock
@@ -68,8 +71,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # ── Model config ───────────────────────────────────────────────────────────────
-LIGHT_TEXT_MODEL = "llama-3.3-70b-versatile"
-ANSWER_MODEL     = "llama-3.3-70b-versatile"
+OPENROUTER_DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct"
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", OPENROUTER_DEFAULT_MODEL)
+LIGHT_TEXT_MODEL = os.getenv("LIGHT_TEXT_MODEL", DEFAULT_MODEL)
+ANSWER_MODEL = os.getenv("ANSWER_MODEL", DEFAULT_MODEL)
 # ── Vault schema ───────────────────────────────────────────────────────────────
 VAULT_SCHEMA = check_vault_schema()   # "new" | "legacy" | "unknown"
 
@@ -239,11 +244,16 @@ def detect_query_domain(query: str):
 def call_llm(
     prompt: str,
     system: str = "You are a helpful and accurate assistant.",
-    model: str = ANSWER_MODEL,
+    model: str | None = None,
     max_tokens: int = 1024,
     retries: int = 2,
+    on_trace: Callable | None = None,
 ) -> str:
-    return providers.chat(prompt, system, model=model, max_tokens=max_tokens, retries=retries)
+    target_model = model or ANSWER_MODEL
+    kwargs = {"model": target_model, "max_tokens": max_tokens, "retries": retries}
+    if on_trace is not None:
+        kwargs["on_trace"] = on_trace
+    return providers.chat(prompt, system, **kwargs)
 
 
 def _trim(text: str, max_words: int = CHUNK_WORD_LIMIT) -> str:
@@ -257,7 +267,7 @@ def _trim(text: str, max_words: int = CHUNK_WORD_LIMIT) -> str:
 # PHASE 3 — PRE-FLIGHT COMBINED RELEVANCE CHECK
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _combined_relevance_check(query: str, chunks: list) -> bool:
+def _combined_relevance_check(query: str, chunks: list, on_trace: Callable | None = None) -> bool:
     """
     Phase 3 — Pre-flight combined relevance check.
 
@@ -312,21 +322,52 @@ Respond with ONLY 'YES' or 'NO'.
         result = call_llm(
             prompt,
             model=LIGHT_TEXT_MODEL,
-            max_tokens=10,
+            max_tokens=32,
             system="You are a strict scientific fact checker. Answer only YES or NO.",
+            on_trace=on_trace,
         ).upper()
         passed = "YES" in result
         return passed
+    except (providers.ProviderError, EnvironmentError):
+        raise
     except Exception as e:
         log.warning("Combined relevance check error: %s — defaulting to PASS", e)
-        return True   # on error, pass through (prefer recall over precision)
+        return True   # on non-provider error, pass through (prefer recall over precision)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PHASE 2 HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def extract_best_sentence(query: str, chunk: str) -> str:
+def _is_sentence_boundary(chunk: str, idx: int) -> bool:
+    if idx <= 0:
+        return True
+    preceding = chunk[:idx].rstrip()
+    return not preceding or preceding[-1] in ".?!;\n"
+
+
+def _find_true_sentence_end(text: str, start_pos: int = 0) -> int:
+    # Pattern recognizes sentence terminal punctuation (. ? !)
+    # Avoids false positives on decimals (e.g. 0.001) and common abbreviations (e.g. et al., Fig., Eq.)
+    pos = start_pos
+    abbrev_pattern = re.compile(r'\b(?:al|fig|figs|eq|eqs|ref|refs|dr|mr|mrs|ms|prof|vs|i\.e|e\.g|vol|no|sec)\.$', re.IGNORECASE)
+    while pos < len(text):
+        m = re.search(r'[\.\?\!](?:\s+|$|\n)', text[pos:])
+        if not m:
+            return -1
+        punct_idx = pos + m.start()
+        if text[punct_idx] == '.' and punct_idx > 0 and text[punct_idx - 1].isdigit():
+            pos = punct_idx + 1
+            continue
+        preceding = text[:punct_idx + 1]
+        if text[punct_idx] == '.' and abbrev_pattern.search(preceding):
+            pos = punct_idx + 1
+            continue
+        return punct_idx + 1
+    return -1
+
+
+def extract_best_sentence(query: str, chunk: str, on_trace: Callable | None = None) -> str:
     prompt = f"""You are a precision fact extractor for a scientific research system.
 
 The following text chunk is partially relevant to the user's question.
@@ -347,20 +388,71 @@ Rules:
 - Do NOT return more than one sentence.
 - If no single sentence is useful, return exactly: NO_USEFUL_SENTENCE
 """
-    result = call_llm(prompt, model=ANSWER_MODEL, max_tokens=128).strip()
-    return "" if (not result or result == "NO_USEFUL_SENTENCE") else result
+    try:
+        raw_result = call_llm(prompt, model=ANSWER_MODEL, max_tokens=256, on_trace=on_trace).strip()
+        if not raw_result or raw_result == "NO_USEFUL_SENTENCE":
+            return ""
+        candidate = raw_result.strip('"\'').strip()
+        if not candidate:
+            return ""
+
+        # Guarantee 1: Candidate must be an exact verbatim substring of chunk (rejects divergent suffixes and hallucinations)
+        if candidate not in chunk:
+            log.warning("extract_best_sentence output not found in source chunk; falling back to empty string")
+            return ""
+
+        idx = chunk.find(candidate)
+
+        # Guarantee 2: Candidate must begin at a sentence boundary in chunk (rejects mid-sentence fragments)
+        if not _is_sentence_boundary(chunk, idx):
+            log.warning("extract_best_sentence candidate matched mid-sentence; falling back to empty string")
+            return ""
+
+        # Guarantee 3: If candidate is already a complete sentence ending with terminal punctuation
+        if candidate[-1] in ".?!" and _find_true_sentence_end(candidate, 0) == len(candidate):
+            return candidate
+
+        # Guarantee 4: Safe length truncation recovery:
+        # Candidate is an exact prefix of a sentence starting at idx. Complete forward to true sentence end in chunk.
+        # shortcut: regex sentence boundary handles common scientific prose, when to upgrade: full spaCy sentencizer
+        end_idx = _find_true_sentence_end(chunk, idx + len(candidate))
+        if end_idx != -1:
+            full_span = chunk[idx:end_idx].strip()
+            if "\n\n" not in full_span:
+                return full_span
+
+        log.warning("extract_best_sentence could not resolve full sentence boundary; falling back to empty string")
+        return ""
+    except (providers.ProviderError, EnvironmentError):
+        raise
+    except Exception as e:
+        log.warning("extract_best_sentence LLM error: %s", e)
+        return ""
 
 
-def supplemental_search(query: str, anchor_sentence: str, n: int = 3, file_filter: str | None = None) -> tuple:
+def supplemental_search(query: str, anchor_sentence: str, n: int = 3, file_filter: str | None = None, on_trace: Callable | None = None) -> tuple:
     prompt = f"""You are a search query builder.
 Given this user question: "{query}"
 And this key sentence from a partially relevant document: "{anchor_sentence}"
 Write a short, keyword-focused search query (under 10 words) combining both.
 Return ONLY the query, no explanation.
 """
-    sub_query = call_llm(prompt, model=LIGHT_TEXT_MODEL, max_tokens=32).strip()
+    try:
+        sub_query = call_llm(prompt, model=LIGHT_TEXT_MODEL, max_tokens=32, on_trace=on_trace).strip()
+    except (providers.ProviderError, EnvironmentError):
+        raise
+    except Exception as e:
+        log.warning("supplemental_search LLM error: %s", e)
+        sub_query = query
     log.debug("Supplemental search query generated")
     raw = search_vault(sub_query, n_results=n, file_filter=file_filter)
+    if on_trace:
+        on_trace("search", {
+            "stage": "supplemental",
+            "query": sub_query,
+            "documents": raw["documents"][0] if raw.get("documents") else [],
+            "metadatas": raw["metadatas"][0] if raw.get("metadatas") else [],
+        })
     return raw["documents"][0], raw["metadatas"][0]
 
 
@@ -375,7 +467,7 @@ def pick_more_relevant(query: str, candidate_a: str, candidate_b: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
-                    file_filter: str | None = None, on_stage=None) -> tuple:
+                    file_filter: str | None = None, on_stage=None, on_trace: Callable | None = None) -> tuple:
     """
     Phase 2: Tri-State Logic Engine.
 
@@ -413,6 +505,15 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
     scored_candidates.sort(key=lambda x: x[0], reverse=True)
     if on_stage:
         on_stage("grading", "Reranking complete; grading passages")
+    if on_trace:
+        on_trace("rerank", {
+            "query": query,
+            "candidates_count": len(scored_candidates),
+            "top_candidates": [
+                {"score": r, "source": s, "metadata": m}
+                for r, c, s, _, m in scored_candidates[:PROCESS_K]
+            ]
+        })
     _print_score_histogram([(r, c, s) for r, c, s, _, _ in scored_candidates])
 
     top_candidates = scored_candidates[:PROCESS_K]
@@ -476,7 +577,7 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
             original_meta = metas[idx]
             log.info(f"  ┌─ [{source}]  ({n+1}/{len(ambiguous_indices)})")
 
-            best_sentence = extract_best_sentence(query, chunk)
+            best_sentence = extract_best_sentence(query, chunk, on_trace=on_trace)
             if not best_sentence:
                 log.info("  └─ ⚠️  No useful sentence → discarded.")
                 if n < len(ambiguous_indices) - 1:
@@ -486,7 +587,7 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
             log.debug("Intermediate passage omitted")
             log.info("  │  🔍 Supplemental search…")
             supp_chunks, supp_metas = supplemental_search(query, best_sentence, n=3,
-                                                          file_filter=file_filter)
+                                                          file_filter=file_filter, on_trace=on_trace)
 
             best_supp, best_supp_source, best_supp_score, best_supp_meta = None, source, 0.0, {}
             for j, sc in enumerate(supp_chunks):
@@ -563,17 +664,23 @@ def evaluate_chunks(query: str, raw_chunks: list, raw_metadatas: list,
 # PHASE 4 — ADAPTIVE FALLBACK & CONTROLLED GENERATION
 # ══════════════════════════════════════════════════════════════════════════════
 
-def rewrite_query(original_query: str) -> str:
+def rewrite_query(original_query: str, on_trace: Callable | None = None) -> str:
     prompt = f"""You are a search query optimizer for a scientific research database.
 The following question failed to retrieve relevant results:
 "{original_query}"
 Rewrite it as a short, keyword-focused search query using different,
 more specific scientific terminology. Return ONLY the rewritten query. Keep it under 10 words.
 """
-    return call_llm(prompt, model=LIGHT_TEXT_MODEL, max_tokens=32).strip()
+    try:
+        return call_llm(prompt, model=LIGHT_TEXT_MODEL, max_tokens=32, on_trace=on_trace).strip()
+    except (providers.ProviderError, EnvironmentError):
+        raise
+    except Exception as e:
+        log.warning("rewrite_query LLM error: %s", e)
+        return original_query
 
 
-def generate_final_answer(query: str, chunks: list, sources: list) -> str:
+def generate_final_answer(query: str, chunks: list, sources: list, on_trace: Callable | None = None) -> str:
     if not chunks:
         return "No information detected from the papers for your query."
     context = "\n\n---\n\n".join(
@@ -595,13 +702,25 @@ User Question:
 Verified Context:
 {context}
 """
+    system = "You are a strict, citation-aware research assistant. Never hallucinate. Only use the provided context."
+    if on_trace:
+        on_trace("generation_boundary", {
+            "type": "final_answer",
+            "prompt": prompt,
+            "system": system,
+            "model": ANSWER_MODEL,
+            "context": context,
+            "chunks": chunks,
+            "sources": sources
+        })
     return call_llm(
         prompt, model=ANSWER_MODEL, max_tokens=900,
-        system="You are a strict, citation-aware research assistant. Never hallucinate. Only use the provided context.",
+        system=system,
+        on_trace=on_trace
     )
 
 
-def generate_soft_answer(query: str, chunks: list, sources: list) -> str:
+def generate_soft_answer(query: str, chunks: list, sources: list, on_trace: Callable | None = None) -> str:
     context = "\n\n---\n\n".join(
         f"[Source: {sources[i]}]\n{chunk}" for i, chunk in enumerate(chunks)
     )
@@ -615,7 +734,21 @@ Task:
 Related Context:
 {context}
 """
-    return call_llm(prompt, model=ANSWER_MODEL, max_tokens=900)
+    system = "You are a helpful and accurate assistant."
+    if on_trace:
+        on_trace("generation_boundary", {
+            "type": "soft_answer",
+            "prompt": prompt,
+            "system": system,
+            "model": ANSWER_MODEL,
+            "context": context,
+            "chunks": chunks,
+            "sources": sources
+        })
+    final_kwargs = {"model": ANSWER_MODEL, "max_tokens": 900, "system": system}
+    if on_trace is not None:
+        final_kwargs["on_trace"] = on_trace
+    return call_llm(prompt, **final_kwargs)
 
 
 def _evidence(chunks: list, sources: list, metadatas: list) -> list:
@@ -631,7 +764,7 @@ def _evidence(chunks: list, sources: list, metadatas: list) -> list:
     return items
 
 
-def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=None) -> dict:
+def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=None, on_trace: Callable | None = None) -> dict:
     """
     Master CRAG pipeline — all 4 phases.
 
@@ -655,15 +788,36 @@ def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=N
     chunks    = raw["documents"][0]
     metadatas = raw["metadatas"][0]
 
+    if on_trace:
+        on_trace("search", {
+            "stage": "initial",
+            "query": user_query,
+            "documents": chunks,
+            "metadatas": metadatas
+        })
+
     if not chunks and query_domain:
         log.info("  [Domain Filter] No results — retrying without filter.")
         raw       = search_vault(user_query, n_results=FETCH_K, file_filter=file_filter)
         chunks    = raw["documents"][0]
         metadatas = raw["metadatas"][0]
+        if on_trace:
+            on_trace("search", {
+                "stage": "initial_retry_no_domain",
+                "query": user_query,
+                "documents": chunks,
+                "metadatas": metadatas
+            })
 
     emit("reranking", "Reranking retrieved passages")
-    verified, sources, verified_metas = evaluate_chunks(user_query, chunks, metadatas,
-                                                       file_filter=file_filter, on_stage=on_stage)
+    eval_kwargs = {"file_filter": file_filter, "on_stage": on_stage}
+    if on_trace is not None:
+        eval_kwargs["on_trace"] = on_trace
+    verified, sources, verified_metas = evaluate_chunks(user_query, chunks, metadatas, **eval_kwargs)
+
+    final_kwargs = {}
+    if on_trace is not None:
+        final_kwargs["on_trace"] = on_trace
 
     # ── Phase 3: Pre-flight combined relevance check ───────────────────────────
     # Run ONLY when verified chunks exist.
@@ -673,13 +827,19 @@ def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=N
     if verified:
         emit("resolving", "Checking combined evidence")
         log.info(f"  PHASE 3 — Pre-flight combined relevance check ({len(verified)} chunk(s))...")
-        combined_ok = _combined_relevance_check(user_query, verified)
+        combined_ok = _combined_relevance_check(user_query, verified, on_trace=on_trace) if on_trace is not None else _combined_relevance_check(user_query, verified)
+        if on_trace:
+            on_trace("combined_check", {
+                "stage": "initial",
+                "passed": combined_ok,
+                "chunks_count": len(verified)
+            })
         if combined_ok:
             log.info("  ✅ Combined check PASSED → returning verified context")
             emit("generating", "Generating a cited answer")
             return {
                 "status":     "success",
-                "answer":     generate_final_answer(user_query, verified, sources),
+                "answer":     generate_final_answer(user_query, verified, sources, **final_kwargs),
                 "facts":      verified,
                 "evidence":   _evidence(verified, sources, verified_metas),
                 "sources":    list(set(sources)),
@@ -693,7 +853,7 @@ def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=N
     log.debug("separator")
     log.debug("separator")
     log.info("  ⚠️  PHASE 4 FALLBACK — rewriting query")
-    new_query = rewrite_query(user_query)
+    new_query = rewrite_query(user_query, on_trace=on_trace) if on_trace is not None else rewrite_query(user_query)
     log.debug("Query rewritten")
     log.debug("separator")
     log.debug("separator")
@@ -703,21 +863,34 @@ def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=N
     chunks2    = raw2["documents"][0]
     metadatas2 = raw2["metadatas"][0]
 
+    if on_trace:
+        on_trace("search", {
+            "stage": "fallback",
+            "query": new_query,
+            "documents": chunks2,
+            "metadatas": metadatas2
+        })
+
     emit("reranking", "Reranking fallback passages")
-    verified2, sources2, verified_metas2 = evaluate_chunks(new_query, chunks2, metadatas2,
-                                                            file_filter=file_filter, on_stage=on_stage)
+    verified2, sources2, verified_metas2 = evaluate_chunks(new_query, chunks2, metadatas2, **eval_kwargs)
 
     # Phase 3 check on rewritten query results too
     if verified2:
         emit("resolving", "Checking fallback evidence")
         log.info(f"  PHASE 3 — Combined check on fallback results ({len(verified2)} chunk(s))...")
-        combined_ok2 = _combined_relevance_check(user_query, verified2)
+        combined_ok2 = _combined_relevance_check(user_query, verified2, on_trace=on_trace) if on_trace is not None else _combined_relevance_check(user_query, verified2)
+        if on_trace:
+            on_trace("combined_check", {
+                "stage": "fallback",
+                "passed": combined_ok2,
+                "chunks_count": len(verified2)
+            })
         if combined_ok2:
             log.info("  ✅ Combined check PASSED")
             emit("generating", "Generating a cited answer")
             return {
                 "status":     "fallback_success",
-                "answer":     generate_final_answer(user_query, verified2, sources2),
+                "answer":     generate_final_answer(user_query, verified2, sources2, **final_kwargs),
                 "facts":      verified2,
                 "evidence":   _evidence(verified2, sources2, verified_metas2),
                 "sources":    list(set(sources2)),
@@ -751,7 +924,7 @@ def run_logic_engine(user_query: str, file_filter: str | None = None, on_stage=N
         emit("generating", "Generating a partial answer")
         return {
             "status":     "partial_match",
-            "answer":     generate_soft_answer(user_query, related_chunks, related_sources),
+            "answer":     generate_soft_answer(user_query, related_chunks, related_sources, **final_kwargs),
             "facts":      related_chunks,
             "evidence":   _evidence(related_chunks, related_sources, related_metas),
             "sources":    list(set(related_sources)),

@@ -14,7 +14,10 @@ export default function SourceCard({ source }: Props) {
   const label = source.evidenceStatus === "partial" ? "Partial evidence" :
     source.evidenceStatus === "evidence" ? "Evidence" : "Source";
   const page = source.pageNumber;
-  const href = `http://localhost:8000/api/vault/document/${encodeURIComponent(source.filename)}` +
+  const baseUrl = typeof window !== "undefined" && window.location.hostname === "127.0.0.1"
+    ? "http://127.0.0.1:8000"
+    : "http://localhost:8000";
+  const href = `${baseUrl}/api/vault/document/${encodeURIComponent(source.filename)}` +
     (page != null ? `#page=${page}` : "");
   return (
     <div style={{

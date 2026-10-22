@@ -10,14 +10,16 @@ export interface ChatSession {
   createdAt: number;
 }
 
-const STORAGE_KEY = "crag_chat_sessions";
+export const STORAGE_KEY = "citefirst_chat_sessions";
+export const LEGACY_STORAGE_KEY = "crag_chat_sessions";
 
-function parseSessions(raw: string): ChatSession[] {
+export function parseSessions(raw: string): ChatSession[] {
   try {
     const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
     return parsed.map((s: ChatSession) => ({
       ...s,
-      messages: s.messages.map((m) => ({
+      messages: (s.messages || []).map((m) => ({
         ...m,
         timestamp: new Date(m.timestamp),
       })),
@@ -25,6 +27,31 @@ function parseSessions(raw: string): ChatSession[] {
   } catch {
     return [];
   }
+}
+
+export function loadStoredSessions(storage: Pick<Storage, "getItem" | "setItem"> = localStorage): ChatSession[] {
+  try {
+    const current = storage.getItem(STORAGE_KEY);
+    if (current) {
+      const parsed = parseSessions(current);
+      if (parsed.length > 0) return parsed;
+    }
+    const legacy = storage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy) {
+      const parsed = parseSessions(legacy);
+      if (parsed.length > 0) {
+        try {
+          storage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        } catch {
+          // ignore write errors during migration
+        }
+        return parsed;
+      }
+    }
+  } catch {
+    // storage unavailable
+  }
+  return [];
 }
 
 export function useChatHistory() {
@@ -36,25 +63,28 @@ export function useChatHistory() {
 
   // Load from localStorage only after mount (client-only)
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      if (stored) {
-        const parsed = parseSessions(stored);
-        setSessions(parsed);
-        if (parsed.length > 0) setActiveSessionId(parsed[0].id);
-      }
+      const loaded = loadStoredSessions();
+      setSessions(loaded);
+      if (loaded.length > 0) setActiveSessionId(loaded[0].id);
       setHydrated(true);
     });
     return () => { cancelled = true; };
   }, []);
 
-  // Persist to localStorage whenever sessions change (after hydration)
+  // Persist to localStorage whenever sessions change (debounced to avoid streaming frame drops)
   useEffect(() => {
-    if (hydrated) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-    }
+    if (!hydrated) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+      } catch {
+        // quota exceeded or storage disabled
+      }
+    }, 250);
+    return () => clearTimeout(timer);
   }, [sessions, hydrated]);
 
   const createSession = (documentFilter?: string) => {

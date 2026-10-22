@@ -1,5 +1,5 @@
 """
-FastAPI bridge between Next.js frontend and the CRAG Python pipeline.
+FastAPI bridge between Next.js frontend and the CiteFirst Python pipeline.
 Run locally with: uvicorn api:app --reload --host 127.0.0.1 --port 8000
 """
 import json
@@ -24,7 +24,7 @@ from settings_config import DEFAULTS, load_settings, save_settings
 
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="CRAG API")
+app = FastAPI(title="CiteFirst — Research Assistant with Citations API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -61,14 +61,19 @@ def _save_settings(data: dict):
     save_settings(data)
 
 
-# ── Lazy-load CRAG modules ───────────────────────────────────────────────────
+# ── Lazy-load CiteFirst pipeline modules ─────────────────────────────────────
 try:
     from logic_engine import run_logic_engine, reload_config  # type: ignore
     from database import process_and_save_pdf, delete_document, list_documents  # type: ignore
-    CRAG_AVAILABLE = True
+    PIPELINE_AVAILABLE = True
 except Exception as e:
-    CRAG_AVAILABLE = False
-    log.warning("CRAG modules unavailable; stub responses enabled: %s", e)
+    PIPELINE_AVAILABLE = False
+    log.warning("CiteFirst pipeline modules unavailable; stub responses enabled: %s", e)
+
+# Backwards-compatible alias for existing consumers
+CRAG_AVAILABLE = PIPELINE_AVAILABLE
+crag_available = PIPELINE_AVAILABLE
+pipeline_available = PIPELINE_AVAILABLE
 
 from evaluator import run_ml_evaluation
 
@@ -113,10 +118,17 @@ def _prune_eval_tasks():
             _eval_tasks.pop(task_id, None)
 
 
-# ── Health ───────────────────────────────────────────────────────────────────
+# ── Health & Readiness ───────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "crag_available": CRAG_AVAILABLE}
+    ready = PIPELINE_AVAILABLE
+    return {
+        "status": "ok" if ready else "degraded",
+        "ready": ready,
+        "pipeline_available": ready,
+        "crag_available": ready,  # Deprecated compatibility alias
+        "detail": "Pipeline operational" if ready else "Pipeline modules unavailable; fallback stubs active",
+    }
 
 
 # ── Query (non-streaming) ───────────────────────────────────────────────────
@@ -314,14 +326,14 @@ async def vault_upload(file: UploadFile = File(...)):
     finally:
         temporary_path.unlink(missing_ok=True)
 
-    # Index in ChromaDB
-    if CRAG_AVAILABLE:
+    # Index in ChromaDB (offloaded to thread to avoid blocking FastAPI event loop)
+    if PIPELINE_AVAILABLE:
         try:
-            process_and_save_pdf(str(dest))
+            await asyncio.to_thread(process_and_save_pdf, str(dest))
         except Exception as e:
             return {"filename": file.filename, "size": len(content), "warning": f"Saved but indexing failed: {e}"}
 
-    return {"filename": file.filename, "size": len(content), "indexed": CRAG_AVAILABLE}
+    return {"filename": file.filename, "size": len(content), "indexed": PIPELINE_AVAILABLE}
 
 
 @app.delete("/api/vault/delete/{filename}")

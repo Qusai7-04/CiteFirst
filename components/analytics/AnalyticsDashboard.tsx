@@ -41,7 +41,7 @@ export default function AnalyticsDashboard() {
         {busy ? "Checking dataset and retrieval..." : "Run retrieval evaluation"}
       </button>
       <p style={{ marginTop: 16 }}>
-        Hybrid document retrieval before CRAG. No LLM grader or API key is used.
+        Hybrid document retrieval before corrective reranking. No LLM grader or API key is used.
         Only human-verified paper evidence is scored.
       </p>
       {error && <p role="alert" style={{ color: "#f87171" }}>{error}</p>}

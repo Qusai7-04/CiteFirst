@@ -48,6 +48,8 @@ def _get_embedding_model():
 # ── BM25 cache path ────────────────────────────────────────────────────────────
 BM25_CACHE_PATH = VECTOR_DIR / "bm25_corpus.json"
 BM25_CACHE_VERSION = 1
+_bm25_memory_cache = None
+_bm25_lock = Lock()
 
 # ── Domain taxonomy ────────────────────────────────────────────────────────────
 DOMAIN_KEYWORDS = {
@@ -119,8 +121,17 @@ def _build_bm25_index():
 
 
 def _load_or_build_bm25():
+    global _bm25_memory_cache
     if BM25_CACHE_PATH.exists() and not BM25_CACHE_PATH.is_symlink():
         try:
+            stat = BM25_CACHE_PATH.stat()
+            with _bm25_lock:
+                if (_bm25_memory_cache is not None and
+                        _bm25_memory_cache[0] == str(BM25_CACHE_PATH) and
+                        _bm25_memory_cache[1] == stat.st_mtime and
+                        _bm25_memory_cache[2] == stat.st_size):
+                    return _bm25_memory_cache[3]
+
             with BM25_CACHE_PATH.open("r", encoding="utf-8") as f:
                 cached = json.load(f)
             docs = cached["documents"]
@@ -136,7 +147,10 @@ def _load_or_build_bm25():
                            for row in tokens)
                     or any(row != doc.lower().split() for row, doc in zip(tokens, docs))):
                 raise ValueError("Invalid BM25 cache schema")
-            return BM25Okapi(tokens), docs, metas
+            loaded = (BM25Okapi(tokens), docs, metas)
+            with _bm25_lock:
+                _bm25_memory_cache = (str(BM25_CACHE_PATH), stat.st_mtime, stat.st_size, loaded)
+            return loaded
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             pass  # Rebuild from the vector collection; never read the legacy pickle.
     bm25, corpus, metadatas = _build_bm25_index()
@@ -153,10 +167,19 @@ def _load_or_build_bm25():
                 temporary_path.unlink(missing_ok=True)
                 raise
         temporary_path.replace(BM25_CACHE_PATH)
+        try:
+            stat = BM25_CACHE_PATH.stat()
+            with _bm25_lock:
+                _bm25_memory_cache = (str(BM25_CACHE_PATH), stat.st_mtime, stat.st_size, (bm25, corpus, metadatas))
+        except OSError:
+            pass
     return bm25, corpus, metadatas
 
 
 def invalidate_bm25_cache():
+    global _bm25_memory_cache
+    with _bm25_lock:
+        _bm25_memory_cache = None
     if BM25_CACHE_PATH.exists():
         BM25_CACHE_PATH.unlink()
         log.info("[BM25] Cache invalidated. Will rebuild on next search.")

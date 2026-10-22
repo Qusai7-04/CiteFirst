@@ -1,10 +1,15 @@
 import type { Evidence } from "@/types/api";
 
-const BASE_URL =
+export const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== "undefined" && window.location.hostname === "127.0.0.1"
     ? "http://127.0.0.1:8000"
     : "http://localhost:8000");
+
+export function getApiUrl(path: string = ""): string {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${BASE_URL}${cleanPath}`;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -104,12 +109,20 @@ export async function streamQuery(
   return finalResult;
 }
 
-// ── Health check ────────────────────────────────────────────────────────────
-export async function checkHealth(): Promise<{ status: string; crag_available: boolean }> {
+// ── Health & Readiness check ────────────────────────────────────────────────
+export interface HealthResponse {
+  status: string;
+  ready?: boolean;
+  pipeline_available?: boolean;
+  crag_available: boolean; // Retained compatibility alias
+  detail?: string;
+}
+
+export async function checkHealth(): Promise<HealthResponse> {
   try {
-    return await api.get<{ status: string; crag_available: boolean }>("/api/health");
+    return await api.get<HealthResponse>("/api/health");
   } catch {
-    return { status: "unreachable", crag_available: false };
+    return { status: "unreachable", ready: false, pipeline_available: false, crag_available: false };
   }
 }
 

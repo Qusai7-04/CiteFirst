@@ -1,4 +1,4 @@
-"""Evidence-gated document retrieval evaluation before CRAG reranking/generation."""
+"""Evidence-gated document retrieval evaluation before corrective reranking/generation."""
 import argparse
 import csv
 import hashlib
@@ -168,7 +168,7 @@ def write_reports(output_dir, audit, results, summary):
     (directory / "aggregate.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     lines = [
         "# Retrieval evaluation", "",
-        f"Status: **{summary['baseline_status']}**; document-level hybrid search before CRAG.",
+        f"Status: **{summary['baseline_status']}**; document-level hybrid search before corrective reranking.",
         f"Protocol: **{summary['config']['protocol']}**; candidate chunk limit: {summary['config']['chunk_candidate_limit']}.",
         f"Dataset SHA-256: {summary['dataset_sha256']}; index tag: {summary['index_tag']}; "
         f"code commit: {summary['code_commit']}.", "",

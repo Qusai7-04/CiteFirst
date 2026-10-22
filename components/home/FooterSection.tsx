@@ -8,7 +8,7 @@ export default function FooterSection() {
     <section style={{ padding: "80px 24px", borderTop: "1px solid var(--border)", textAlign: "center" }}>
       <h2 style={{ fontSize: "2.2rem", fontWeight: 800, color: "var(--text-primary)", marginBottom: 12 }}>Ready to Get Started?</h2>
       <p style={{ color: "var(--text-muted)", marginBottom: 36, fontSize: "1.05rem" }}>
-        Upload your documents, ask questions, and see CRAG&apos;s self-correcting pipeline in action.
+        Upload your documents, ask questions, and see CiteFirst&apos;s self-correcting pipeline in action.
       </p>
       <div style={{ display: "flex", justifyContent: "center", gap: 16 }}>
         <button
@@ -25,7 +25,7 @@ export default function FooterSection() {
         </button>
       </div>
       <p style={{ marginTop: 48, color: "var(--text-faint)", fontSize: 13 }}>
-        Built with Next.js 16 · FastAPI · ChromaDB · SentenceTransformers · cross-encoder/ms-marco-MiniLM-L-6-v2
+        Built with Next.js 16 · FastAPI · ChromaDB · BAAI/bge-reranker-base · OpenRouter
       </p>
     </section>
   );

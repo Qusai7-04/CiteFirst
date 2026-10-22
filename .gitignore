@@ -62,7 +62,6 @@ bm25_corpus.json
 .code-review-graph/
 .claude/
 .agents/
-GEMINI.md
 CLAUDE.md
 .cursorrules
 .windsurfrules
@@ -73,13 +72,5 @@ CLAUDE_*PROMPT*
 GEMINI_*PROMPT*
 GEMINI_CITEFIRST_*
 CiteFirst_*PROMPT*
-*Viva_Preparation*
-Dataset_Description*
-*CHANGELOG_FOR_REVIEW*
-*REVIEW_FINDINGS*
-*REVIEW_WORKSHEET*
-CANDIDATE_REVIEW_WORKSHEET*
 *.zip
-_zip_review/
 scratch/
-docs/evaluation/phase4_human_answer_review_packet.md

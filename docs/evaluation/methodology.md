@@ -1,6 +1,6 @@
-# Phase 3 evaluation method
+# Retrieval Evaluation Methodology
 
-Historical Phase 3 protocol. See [Pipeline Evaluation & Benchmark Report](evaluation_report.md) before using these outputs for a new comparison. The 18 reviewed questions are development cases; known-source hit and MRR are diagnostics, while corpus-wide recall needs complete relevant-paper judgments. The ten-chunk protocol pads missing paper ranks as misses; the document-pool protocol marks them unavailable. The reproducibility manifest's recorded reviewed-dataset digest must be rechecked against the actual checked-in file before rerunning.
+Historical Phase 3 and Phase 4 retrieval evaluation protocol. See [Pipeline Evaluation & Benchmark Report](evaluation_report.md) before using these outputs for a new comparison. The 18 reviewed questions are development cases; known-source hit and MRR are diagnostics, while corpus-wide recall needs complete relevant-paper judgments. The ten-chunk protocol pads missing paper ranks as misses; the document-pool protocol marks them unavailable. The reproducibility manifest's recorded reviewed-dataset digest must be rechecked against the actual checked-in file before rerunning.
 
 From the repository root:
 

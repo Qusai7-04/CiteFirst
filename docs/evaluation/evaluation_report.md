@@ -3,7 +3,7 @@
 - **Date:** 2026-10-21
 - **Provider:** OpenRouter (`meta-llama/llama-3.3-70b-instruct`)
 - **Pipeline Architecture:** Hybrid dense (BGE-small-en-v1.5) + BM25 retrieval, BGE-reranker-base cross-encoder, adaptive softmax context selection, CRAG corrective routing.
-- **Repository Branch:** `cleanup/phase4-consolidation`
+- **Evaluation Baseline:** Consolidated Phase 4 benchmark on main pipeline
 
 ---
 

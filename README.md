@@ -13,10 +13,10 @@
 
 <p>
   <a href="#explore-the-app">Explore</a> ·
-  <a href="#how-it-works">Pipeline</a> ·
+  <a href="#architecture-overview">Architecture</a> ·
   <a href="#quickstart">Quickstart</a> ·
   <a href="#evaluation-benchmark--verified-results">Evaluation</a> ·
-  <a href="#api-and-configuration">API &amp; configuration</a>
+  <a href="#api">API &amp; configuration</a>
 </p>
 
 </div>
@@ -454,4 +454,4 @@ The frontend forwards `/api/*` to `http://127.0.0.1:8000`. Make sure the backend
 
 CiteFirst grew out of the **CRAG-Pipeline** university research project on Corrective RAG at the Manipal Institute of Technology, created by **Sushant Shekhar Sinha**, **Kanan Gupta** and **Qusai** ([original repo](https://github.com/Sushant-py/CRAG-Pipeline)). The citation-grounding architecture, evaluation framework, security hardening and ongoing maintenance live in this repository. See [`NOTICE.md`](NOTICE.md) for full attribution and permissions.
 
-**Licensing:** CiteFirst intentionally has no root `LICENSE` file. All rights are reserved by the authors. Third-party libraries, research papers and model weights (ChromaDB, PyMuPDF, SentenceTransformers, Hugging Face models) remain under their own licenses.
+**Licensing:** CiteFirst intentionally has no root `LICENSE` file. All rights are reserved by the authors. Third-party libraries, research papers and model weights (ChromaDB, PyMuPDF, SentenceTransformers, Hugging Face models) remain under their own licenses.
